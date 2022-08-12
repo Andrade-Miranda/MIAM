@@ -1,0 +1,34 @@
+
+#VIT_sT1T2
+--name VITsT1T2 --encoder VIT_s-T1T2 --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 16 --batchSize 1 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 2e-3 --fold 0 --input_nc 2 
+
+#VIT_mT1T2
+--name VITmT1T2 --encoder VIT_m-T1T2 --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 16 --batchSize 1 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 2e-3 --fold 0 --input_nc 2 
+
+#MCNN_h+VIT_n-T1T2
+--name MCNN_h+VIT_n-T1T2 --encoder MCNN_h+VIT_n-T1T2 --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 1 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 2e-3 --fold 0 --hybrid --input_nc 2 
+
+#MCNN_h+VIT_s-T1T2
+--name MCNN_h+VIT_s-T1T2 --encoder MCNN_h+VIT_s-T1T2 --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 1 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 2e-3 --fold 0 --hybrid --input_nc 2 
+
+#MCNN_h+VIT_m-T1T2
+--name MCNN_h+VIT_m-T1T2 --encoder MCNN_h+VIT_m-T1T2 --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 1 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 2e-3 --fold 0 --hybrid --input_nc 2
+
+#VIT_s
+--name VITs --encoder VIT_s --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 16 --batchSize 1 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 2e-3 --fold 0  
+
+#swinfuse
+--name Swinfuse --encoder Swinfuse --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 2 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 48 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --lr 2e-3 --fold 0 --hybrid
+
+#transfuse
+--name transfuse --encoder Transfuse --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 16 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --lr 2e-3 --fold 0 --hybrid
+
+#SCNN_h+VIT_n-CL
+--name SCNN_h+VIT_n-CL --encoder SCNN_h+VIT_n-CL --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig+ContrasLearn --patchSize 1 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 2e-3 --fold 0 --hybrid
+
+#MCNN_h+VIT_n-CL
+--name MCNN_h+VIT_n-CL --encoder MCNN_h+VIT_n-CL --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig+ContrasLearn --patchSize 1 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 2e-3 --fold 0 --hybrid
+
+#MCNN_h
+--name MCNN_h --encoder MCNN_h --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --batchSize 2 --epochs 1 --gpu_ids -1 --VAL_AMP --filters_Encoder 16 32 64 128 --lr 2e-3 --fold 0
+

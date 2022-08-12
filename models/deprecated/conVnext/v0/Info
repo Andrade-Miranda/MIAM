@@ -1,0 +1,4 @@
+- to check the code
+- uso 2 conv en decoder y subo el numero de features x4 en la primera conv y vuelvo al valor original
+- no utilizo skip connections en el decoder (paper iansten)
+- uso Tiny Convnext 
