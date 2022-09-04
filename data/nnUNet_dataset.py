@@ -300,11 +300,12 @@ class nnUNetDataset(BaseDataset):
             splits = []
             all_keys_sorted = np.sort(list(dataset.keys()))
             
-            if self.opt.loadsplit:
-                splits_file=os.path.join('./pretrained_ckpt', "Custom_split.pkl") #splits_final.pkl    
-                # print("Loading split...:%s" % splits_file)
+            if self.opt.loadsplit is not None:
+                splits_file=os.path.join('./splits_plk', self.opt.loadsplit) #splits_final.pkl    
+                print("Loading split...:%s" % splits_file)
+                ##### temporary solution for create a new custom pkl split
                 # from util.split_fnct import HEKTOR_splitprogressive
-                # splits=HEKTOR_splitprogressive(all_keys_sorted,self.n_splits)
+                # splits=HEKTOR_splitprogressive(all_keys_sorted,20)
             else:
                 print("Creating new split...")
                 kfold = KFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
@@ -345,23 +346,23 @@ class nnUNetDataset(BaseDataset):
     def LoadData(self):  
         
         task=self.opt.dataroot
-        p = os.path.join(self.preprocessing_output_dir,task,'nnUNetData_plans_v2.1_stage0')
+        p = os.path.join(self.preprocessing_output_dir,task,self.opt.planning_stage)# take always last stage(FULLRES)
         dataset = load_dataset(p, 0)
-        plan=self.opt.plan
-        with open(os.path.join(os.path.join(self.preprocessing_output_dir,task,plan)), 'rb') as f:
-            plans = pickle.load(f)
+        
+        # plan=self.opt.plan
+        # with open(os.path.join(os.path.join(self.preprocessing_output_dir,task,plan)), 'rb') as f:
+        #     plans = pickle.load(f)
 
-        #self.opt.imageSize=list(plans['plans_per_stage'][0]['patch_size'])## cambio el tamano de la imagen al definido por NNuNet?
-        basic_patch_size = self.get_patch_size(np.array(plans['plans_per_stage'][0]['patch_size']),
+        basic_patch_size = self.get_patch_size(np.array(self.opt.imageSize),
                                           self.default_3D_augmentation_params['rotation_x'],
                                           self.default_3D_augmentation_params['rotation_y'],
                                           self.default_3D_augmentation_params['rotation_z'],
                                           self.default_3D_augmentation_params['scale_range'])
-        # np.array(plans['plans_per_stage'][0]['patch_size']).astype(int) have to be equal to opt.imagesize
+
         self.dataset_tr,self.dataset_val=self.do_split(dataset,self.fold)
-        dtran = DataLoader3D(self.dataset_tr, basic_patch_size, np.array(plans['plans_per_stage'][0]['patch_size']).astype(int), self.opt.batchSize)
+        dtran = DataLoader3D(self.dataset_tr, basic_patch_size, np.array(self.opt.imageSize).astype(int), self.opt.batchSize)
         #dval = DataLoader3D(self.dataset_val, np.array(plans['plans_per_stage'][0]['median_patient_size_in_voxels']), np.array(plans['plans_per_stage'][0]['median_patient_size_in_voxels']), self.opt.Val_batchSize)
-        tr, val = self.get_default_augmentation(dtran, np.array(plans['plans_per_stage'][0]['patch_size']).astype(int))
+        tr, val = self.get_default_augmentation(dtran, np.array(self.opt.imageSize).astype(int))
         self.train_loader, self.val_loader=tr, val
         
         return self.train_loader, self.val_loader

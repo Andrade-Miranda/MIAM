@@ -6,7 +6,7 @@ Created on Tue May  3 12:19:17 2022
 @author: gustavo
 """
 
-from sklearn.model_selection import KFold
+#from sklearn.model_selection import KFold
 from collections import OrderedDict
 import numpy as np
 
@@ -27,7 +27,7 @@ def HEKTOR_Multicenter_split(all_keys_sorted):  # FOR HEKTOR
     return output
 
 
-def HEKTOR_splitprogressive(all_keys_sorted):  # FOR HEKTOR
+def HEKTOR_splitprogressive(all_keys_sorted,num_fold):  # FOR HEKTOR
     a=[[],[],[],[],[]]
     cont=0
     for x in ['CHGJ','CHMR','CHUM','CHUP','CHUS']:
@@ -37,18 +37,18 @@ def HEKTOR_splitprogressive(all_keys_sorted):  # FOR HEKTOR
         cont+=1
     val=[]
     for i in range(len(a)):
-        for j in range(4):# i will take two from each center
+        for j in range(4):# i will take 4 from each center
             val.append(a[i].pop())
     data=[]
     output=[]
-    for n_split in [10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200,210]:
-        for i in range(len(a)):
-            if n_split>70:
-                data.extend(np.random.choice(a[i],size=n_split//5,replace=True))
-            else:
-                data.extend(np.random.choice(a[i],size=n_split//5,replace=False))
-        output.append(OrderedDict({'train': np.array(data),'val':np.array(val)}))
-        data=[]
+    for n_folds in range(num_fold):
+        for n_split in [10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170]:
+            for i in range(len(a)):
+                if n_split>70:
+                    data.extend(np.random.choice(a[i],size=n_split//5,replace=True))
+                else:
+                    data.extend(np.random.choice(a[i],size=n_split//5,replace=False))
+            output.append(OrderedDict({'train': np.array(data),'val':np.array(val)}))
+            data=[]
 
-    
     return output

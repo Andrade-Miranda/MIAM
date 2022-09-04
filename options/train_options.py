@@ -5,7 +5,7 @@ class TrainOptions(BaseOptions):
     def initialize(self):
         BaseOptions.initialize(self)
         self.parser.add_argument('--val_interval', type=int, default=1, help='# data for val')
-        self.parser.add_argument('--imageSize', nargs='+', default= [128,128,128], help='Image Size after pre-processing')
+        self.parser.add_argument('--imageSize', nargs='+', default= 0, help='Image Size after pre-processing')
         self.parser.add_argument('--epochs', type=int, default=150, help='# of epochs')
         self.parser.add_argument('--VAL_AMP',  dest='VAL_AMP', action='store_true',default=False, help='Automatic Mixed Precision package - torch.cuda.amp')
         self.parser.add_argument('--MoreAug',  dest='MoreAug', action='store_true',default=False, help='Extra Augmentation, NO AVAILABLE')

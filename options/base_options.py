@@ -3,6 +3,7 @@ import os
 from util import util
 import torch
 from util.visualizer import VisualPlots
+from util.nnUNetUtils import nnUNETPlanning
 
 
 class BaseOptions():
@@ -20,7 +21,7 @@ class BaseOptions():
         self.parser.add_argument('--name', type=str, default=None, help='name of the experiment. It decides where to store samples and models')
         self.parser.add_argument('--TrainConfig', type=str, default='BaseConfig',help='Configuration file that specify optimizers, metrics, lr schedule, etc')
         self.parser.add_argument('--Deterministic', dest='Deterministic',action='store_false',default=True, help='if is True the Deterministic training for reproducibility')          
-        self.parser.add_argument('--loadsplit', dest='loadsplit',action='store_true', default=False, help='load custom split, custom split will be located in pretrained checkpoints')  
+        self.parser.add_argument('--loadsplit',  type=str, default=None,help='load custom splits saved in splits_plk file')  
         self.parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
         self.parser.add_argument('--display_id', type=int, default=1, help='Display final pdf results')#no used yet
         self.parser.add_argument('--yh_run_model', type=str, default='Train', help='chooses which Train or Test')
@@ -65,11 +66,25 @@ class BaseOptions():
         if self.opt.pretrained!=None:
             self.opt.pretrained=os.path.join("./pretrained_ckpt",self.opt.pretrained)
         self.args = vars(self.opt)
+        
+        '------------ Load nnUNet planning -------------'
+        planner=nnUNETPlanning(self.opt)
+        CurrentPlan=planner.load_my_plans()
+        #take always FULLRES
+        self.opt.stage=len(CurrentPlan['plans_per_stage'])-1
+        self.opt.planning_stage='nnUNetData_plans_v2.1_stage'+str(self.opt.stage)
+           
+        if self.opt.imageSize!=0:
+            pass
+        else:
+            self.opt.imageSize=CurrentPlan['plans_per_stage'][self.opt.stage]['patch_size']
+        '-------------'
 
         print('------------ Options -------------')
         for k, v in sorted(self.args.items()):
             print('%s: %s' % (str(k), str(v)))
         print('-------------- End ----------------')
+
 
         # save to the disk
         if self.opt.name is None:

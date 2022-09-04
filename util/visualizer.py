@@ -400,7 +400,31 @@ class Visualizer():
 
 class VisualPlots():
     def __init__(self, opt):
-        self.opt=opt            
+        self.opt=opt
+
+    def imshow_results(self,data,outputs,epoch,numberCases=2,slices=65):
+        fig=plt.figure(figsize=(8, 8))
+        columns = numberCases
+        rows = 4
+        
+        for i in range(columns*rows):
+            fig.add_subplot(rows, columns, i+1)
+            if i in range(columns):
+                plt.title(data['keys'][i])
+                img=data["image"][i,0,slices,:,:].detach().numpy()
+                plt.imshow(img,cmap='gray')
+            elif i in range(columns,columns*2):
+                img=data["image"][i-numberCases,1,slices,:,:].detach().numpy()
+                plt.imshow(img,cmap='gray')
+            elif i in range(columns*2,columns*3):
+                img=data["label"][i-(numberCases*2),0,slices,:,:].detach().numpy()
+                plt.imshow(img)
+            else:
+                img=torch.argmax(outputs, dim=1).detach().numpy()[i-8,slices,:,:]
+                plt.imshow(img)
+            
+        plt.show()
+        plt.savefig(os.path.join(self.opt.out_dir,'PartialResults_'+str(slices)+'_'+str(epoch)+'.pdf'))                
             
     def save_Loss_Metrics(self, epoch_loss_values, metric_values, best_metric_epoch,best_metric,metric_values_tc,metric_values_wt,metric_values_et,val_interval):
         
