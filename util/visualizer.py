@@ -426,7 +426,7 @@ class VisualPlots():
         plt.show()
         plt.savefig(os.path.join(self.opt.out_dir,'PartialResults_'+str(slices)+'_'+str(epoch)+'.pdf'))                
             
-    def save_Loss_Metrics(self, epoch_loss_values, metric_values, best_metric_epoch,best_metric,metric_values_tc,metric_values_wt,metric_values_et,val_interval):
+    def save_Loss_Metrics(self, epoch_loss_values,val_loss_values, metric_values, best_metric_epoch,best_metric,metric_values_tc,metric_values_wt,metric_values_et,val_interval):
         
         plt.figure("train", (12, 6))
         plt.subplot(1, 2, 1)
@@ -435,6 +435,7 @@ class VisualPlots():
         y = epoch_loss_values
         plt.xlabel("epoch")
         plt.plot(x, y, color="red")
+        
         plt.subplot(1, 2, 2)
         plt.title("Val Mean Dice")
         x = [val_interval * (i + 1) for i in range(len(metric_values))]
@@ -467,10 +468,10 @@ class VisualPlots():
         plt.show()
         plt.savefig(os.path.join(self.opt.out_dir,str(best_metric_epoch)+'_'+str(best_metric)+'_TC-WT-ET_.pdf'))
         
-    def save_Loss_MetricsHektor(self, epoch_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor,HDistance, AVgSurfDis, val_interval):
+    def save_Loss_MetricsHektor(self, epoch_loss_values,val_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor,HDistance, AVgSurfDis, val_interval):
         
         plt.figure("Loss and Dice", (12, 6))
-        plt.subplot(1, 2, 1)
+        plt.subplot(1, 3, 1)
         plt.title("Epoch Average Loss")
         x = [i + 1 for i in range(len(epoch_loss_values))]
         y = epoch_loss_values
@@ -478,13 +479,23 @@ class VisualPlots():
         plt.ylabel("loss")
         plt.plot(x, y, color="red")
         plt.yticks(np.arange(0, 1, step=0.1))  # Set label locations.
-        plt.subplot(1, 2, 2)
+        plt.subplot(1, 3, 2)
         plt.title("Val Mean Dice")
         x = [val_interval * (i + 1) for i in range(len(metric_values_tumor))]
         y = metric_values_tumor
         plt.xlabel("epoch")
         plt.ylabel("Dice")
         plt.plot(x, y, color="green")
+        plt.yticks(np.arange(0, 1, step=0.1))  # Set label locations.
+        plt.subplot(1, 3, 3)
+        plt.title("Epoch Average Train and val Loss")
+        x = [i + 1 for i in range(len(epoch_loss_values))]
+        y = epoch_loss_values
+        z = val_loss_values
+        plt.xlabel("epoch")
+        plt.ylabel("loss")
+        plt.plot(x, y, color="red",label='train')
+        plt.plot(x, z, color="blue",label='val')
         plt.yticks(np.arange(0, 1, step=0.1))  # Set label locations.
         plt.show()
         #plt.savefig(os.path.join(self.opt.out_dir,str(best_metric_epoch)+'_'+str(best_metric)+'_LossVsDice.pdf'))

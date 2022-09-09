@@ -11,6 +11,7 @@ from monai.data import (
     decollate_batch
 )
 
+from util.util import save_model
 from monai.utils import set_determinism
 
 #torch.backends.cudnn.benchmark = True
@@ -41,11 +42,15 @@ print('#Datasize = %d: Training:%d   Validation:%d' % (len(data_loader),datalen[
     
 """ Multiples GPU """ 
 model = create_model(opt)
+# x=torch.rand((1,2,128,128,128))
+# y=model(x)
 """---------------------"""
 trainConfig=TrainSetup(opt,model)
 print('#Config Training scheme created')
 
 epoch_loss_values = []
+val_loss_values = []
+
  
 best_metric = -1
 best_metric_epoch = -1
@@ -79,14 +84,14 @@ for epoch in range(max_epochs):
         batch_data["label"].to(opt.device),
         ) 
         
-        print("Data batch: %s, %s" %(batch_data['keys'][0],batch_data['keys'][1]),flush=True)
+        #print("Data batch: %s, %s" %(batch_data['keys'][0],batch_data['keys'][1]),flush=True)
         trainConfig.Config.optimizer.zero_grad()#initialize optimizer
         with torch.cuda.amp.autocast():
             outputs = model(inputs)
             loss = trainConfig.Config.loss_function(outputs, labels)
-        trainConfig.Config.scaler.scale(loss).backward()
-        trainConfig.Config.scaler.step(trainConfig.Config.optimizer)
-        trainConfig.Config.scaler.update()
+        # trainConfig.Config.scaler.scale(loss).backward()
+        # trainConfig.Config.scaler.step(trainConfig.Config.optimizer)
+        # trainConfig.Config.scaler.update()
             
         epoch_loss += loss.item()
             
@@ -101,20 +106,31 @@ for epoch in range(max_epochs):
     print(f"epoch {epoch + 1} average loss: {epoch_loss:.5f} Learning rate: {trainConfig.Config.lr_scheduler.get_last_lr()[0]:.2e}",flush=True)
 
     if (epoch + 1) % val_interval == 0:
+        val_loss_epoch=0
+        stepval = 0
         model.eval()
         with torch.no_grad():#Context-manager that disabled gradient calculation.
             for batchIt in range(num_validation_batches_per_epoch):
+                stepval += 1
                 val_data = next(val_loader)
                 val_inputs,val_labels= (
                         val_data["image"].to(opt.device),
                         val_data["label"].to(opt.device))
                 val_outputs = trainConfig.Config.inference(val_inputs)
+                #val loss
+                val_loss = trainConfig.Config.loss_function(val_outputs, val_labels)
+                val_loss_epoch += val_loss.item()
+                                
+                ## val metrics
                 val_outputs = [trainConfig.Config.post_trans(i) for i in decollate_batch(val_outputs)]
                 trainConfig.Config.dice_metric(y_pred=val_outputs, y=val_labels)
                 trainConfig.Config.Recall_Precision(y_pred=val_outputs, y=val_labels)
                 trainConfig.Config.HausdorffDis(y_pred=val_outputs, y=val_labels)
                 trainConfig.Config.SurfDis(y_pred=val_outputs, y=val_labels)
-
+            
+            val_loss_epoch /= stepval
+            val_loss_values.append(val_loss_epoch)
+            
             metric = trainConfig.Config.dice_metric.aggregate().item()
             metric_values_tumor.append(metric)
             
@@ -147,12 +163,10 @@ for epoch in range(max_epochs):
             best_metrics_epochs_and_time[0].append(best_metric)
             best_metrics_epochs_and_time[1].append(best_metric_epoch)
             best_metrics_epochs_and_time[2].append(time.time() - total_start)
-            torch.save(
-                    model.state_dict(),
-                    os.path.join(root_dir,'lastestCHK'+".pth"),
-            )
+            ####save best model
+            save_model(epoch,model,trainConfig.Config.optimizer,loss,metric,os.path.join(root_dir,'BestCHK'+".pth"))
             print("saved new best Dice metric model",flush=True)
-            Plots.save_Loss_MetricsHektor(epoch_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor,HDistance, AVgSurfDis,val_interval)
+            Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor,HDistance, AVgSurfDis,val_interval)
         print(
             f"current epoch: {epoch + 1} current DICE: {metric:.5f}"
             f" current Surface Distance: {SurfDis:.5f} "
@@ -162,7 +176,8 @@ for epoch in range(max_epochs):
             f"\nbest tumor dice: {best_metric:.5f} best Surface Distance: {best_SurfDis:.5f} best Hausdorff Distance: {best_HD:.5f} best recall: {best_recall:.5f} best precision: {best_precision:.5f}"
                f" at epoch: {best_metric_epoch}",flush=True
                )
-Plots.save_Loss_MetricsHektor(epoch_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor, HDistance, AVgSurfDis,val_interval)
+Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor, HDistance, AVgSurfDis,val_interval)
+save_model(epoch,model,trainConfig.Config.optimizer,loss,metric,os.path.join(root_dir,'lastCHK'+".pth"))
 print(f"time consuming of epoch {epoch + 1} is: {(time.time() - epoch_start):.5f}",flush=True)
 total_time = time.time() - total_start
 print(f"train completed, best_dice: {best_metric:.5f} - best_HD: {best_HD:.5f} - best_SurfDis: {best_SurfDis:.5f} at epoch: {best_metric_epoch}, total time: {total_time}.")

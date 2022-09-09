@@ -100,7 +100,7 @@ def create_model(opt):
             from .netMisc import UNETRModel
             model = UNETRModel(opt)
         elif opt.encoder=='SwinTrans3D':#si
-            from .SwinTrans3D import SwinTransformer3D  
+            from .netMisc import SwinTransformer3D  
             model = SwinTransformer3D(opt)
         elif opt.encoder=='SwinTrans3DSimple':#no
             from .SwinTrans3DS import SwinTransformer3DSimple  

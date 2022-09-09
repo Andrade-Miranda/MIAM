@@ -6,7 +6,7 @@ from torch.optim import lr_scheduler
 from torch.autograd import Variable
 from torchvision import models
 from util import block
-from monai.networks.nets import UNETR,SegResNet,UNet
+from monai.networks.nets import UNETR,SegResNet,UNet,SwinUNETR
 from util.util import print_network
 
 
@@ -837,7 +837,62 @@ class PixelDiscriminator(nn.Module):
     def forward(self, input):
         """Standard forward."""
         return self.net(input)
+
+class SwinTransformer3D(nn.Module):
     
+    def __init__(self, opt):
+        
+        in_channels=opt.input_nc
+        out_channels= opt.output_nc
+        img_size=opt.imageSize
+        feature_size=opt.hidden_size
+        self.opt=opt
+        
+        super(SwinTransformer3D,self).__init__()
+        
+        self.model = SwinUNETR(
+            img_size=img_size,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            feature_size=feature_size,
+            drop_rate=0.0,
+            attn_drop_rate=0.0,
+            dropout_path_rate=0.0,
+            use_checkpoint=True,
+            )
+        
+        
+    def forward(self, x_in):
+        return self.model(x_in)
+        
+    def name(self):
+        return 'SwinUNETR Transformer'
+
+    def init_net(self,model, init_type='normal', init_gain=0.02):
+        """Initialize a network: 1. register CPU/GPU device (with multi-GPU support); 2. initialize the network weights
+        Parameters:
+            net (network)      -- the network to be initialized
+            init_type (str)    -- the name of an initialization method: normal | xavier | kaiming | orthogonal
+            gain (float)       -- scaling factor for normal, xavier and orthogonal.
+            gpu_ids (int list) -- which GPUs the network runs on: e.g., 0,1,2
+
+        Return an initialized network.
+        """
+        if not self.opt.gpu_ids:
+            model = model.to(self.opt.device)
+        elif self.opt.gpu_ids[0]>1:
+            assert(torch.cuda.is_available())
+            model = torch.nn.DataParallel(model, list(range(self.opt.gpu_ids[0]))).to(self.opt.device)  # multi-GPUs
+        else:
+            model = model.to(self.opt.device)
+        print_network(model)
+        print('#model created')
+        """---------------------"""
+        #self.init_weights(model, init_type, init_gain=init_gain)
+        return model
+    """--------------------------------------------------------------------""" 
+
+
     
 class UNETRModel(nn.Module):
     

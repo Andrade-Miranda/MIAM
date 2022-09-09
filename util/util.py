@@ -147,12 +147,13 @@ def print_network(net):
     print(net)
     print('Total number of trainables parameters: %d' % n_parameters)
     
-def save_model(epoch,model,optimizer,loss,PATH):
+def save_model(epoch,model,optimizer,loss,metric,PATH):
     torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': loss,
+            'metric':metric,
             },PATH)
 """-------------------------------------------------------------"""   
     
