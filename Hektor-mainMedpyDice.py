@@ -42,8 +42,8 @@ print('#Datasize = %d: Training:%d   Validation:%d' % (len(data_loader),datalen[
     
 """ Multiples GPU """ 
 model = create_model(opt)
-# x=torch.rand((1,2,128,128,128))
-# y=model(x)
+x=torch.rand((1,2,128,128,128))
+y=model(x)
 """---------------------"""
 trainConfig=TrainSetup(opt,model)
 print('#Config Training scheme created')

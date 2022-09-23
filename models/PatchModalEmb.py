@@ -130,6 +130,12 @@ class PatchModalEmbBlock(nn.Module):
                 Rearrange(f"{from_chars} -> {to_chars}", **axes_len),
                 nn.Linear(self.patch_dim, hidden_size),
             )
+        self.position_embeddings = nn.Parameter(torch.zeros(1, self.n_patches//self.numModal, hidden_size))
+        self.segment_Embedding=nn.Parameter(torch.cat([torch.ones(1, (self.n_patches//self.numModal)+1, hidden_size)*i for i in range(self.numModal)],1))
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
+
+        self.dropout = nn.Dropout(dropout_rate)    
+            
         self.dropout = nn.Dropout(dropout_rate)
         self.apply(self._init_weights)
 

@@ -3,7 +3,8 @@ def create_model(opt):
     encoderOption=['CNN_h+VIT_n','CNN_l+VIT_n','MCNN_h+VIT_n','MCNN_h+VIT_s','MCNN_h+VIT_m','Unet','MCNN_l+VIT_s','MCNN_l+VIT_m',
                    'VIT_n','VIT_s','VIT_m','SegResNetVAE','SegResNet','UNETR','SwinTrans3DSimple','SwinTrans3D','nnFormer',
                    'SCNN_h+VIT_n','MCNN_l+VIT_n','SCNN_h+VIT_s','SCNN_h+VIT_m','Transfuse','Swinfuse','MCNN_h+VIT_n-CL','SCNN_h+VIT_n-CL',
-                   'VIT_s-T1T2','VIT_m-T1T2','MCNN_h+VIT_n-T1T2','MCNN_h+VIT_s-T1T2','MCNN_h+VIT_m-T1T2', 'MCNN_h','ConVnext-UNet','MCNN_h+VIT-backbone']
+                   'VIT_s-T1T2','VIT_m-T1T2','MCNN_h+VIT_n-T1T2','MCNN_h+VIT_s-T1T2','MCNN_h+VIT_m-T1T2', 'MCNN_h','ConVnext-UNet','MCNN_h+VIT-backbone',
+                   'MCNN_h+VIT_cv']
     decoderOption=['linear','CNN_PUP+MLA', 'VIT_PUP+MLA', 'VIT']
     
     print(f"Model is hybrid: {opt.hybrid}. Encoder: {opt.encoder}, Decoder: {opt.decoder}")
@@ -23,6 +24,9 @@ def create_model(opt):
         elif opt.encoder=='MCNN_h+VIT_m':#si
             from .MCNNh_VITm import MultiCNNHeavy_VITmultiple   
             model = MultiCNNHeavy_VITmultiple(opt)
+        elif opt.encoder=='MCNN_h+VIT_cv':#si
+            from .MCNNh_VITcv import MultiCNNHeavy_VITCrossVit   
+            model = MultiCNNHeavy_VITCrossVit(opt)
         elif opt.encoder=='CNN_l+VIT_n':#si
             from .CNNl_VITn import CNNlight_VITNaive    
             model = CNNlight_VITNaive(opt)
