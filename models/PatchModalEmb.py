@@ -25,11 +25,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from monai.networks.layers import Conv
+from monai.networks.layers import Conv,trunc_normal_
 from monai.utils import ensure_tuple_rep, optional_import
 from monai.utils.module import look_up_option
 from monai.networks.blocks.dynunet_block import get_conv_layer,get_act_layer,get_norm_layer
-
 
 Rearrange, _ = optional_import("einops.layers.torch", name="Rearrange")
 SUPPORTED_EMBEDDING_TYPES = {"conv", "perceptron",'NonlinGate'}
@@ -58,6 +57,7 @@ class PatchModalEmbBlock(nn.Module):
         pos_embed: str,
         dropout_rate: float = 0.0,
         spatial_dims: int = 3,
+        modality: int=0,
     ) -> None:
         """
         Args:
@@ -93,7 +93,7 @@ class PatchModalEmbBlock(nn.Module):
                 raise ValueError("patch_size should be smaller than img_size.")
             if self.pos_embed == "perceptron" and m % p != 0:
                 raise ValueError("patch_size should be divisible by img_size for perceptron.")
-        self.n_patches = np.prod([im_d // p_d for im_d, p_d in zip(img_size, patch_size)])*numModal
+        self.n_patches = np.prod([im_d // p_d for im_d, p_d in zip(img_size, patch_size)])
         self.patch_dim = in_channels * np.prod(patch_size)
 
         self.patch_embeddings: nn.Module
@@ -130,39 +130,23 @@ class PatchModalEmbBlock(nn.Module):
                 Rearrange(f"{from_chars} -> {to_chars}", **axes_len),
                 nn.Linear(self.patch_dim, hidden_size),
             )
-        self.position_embeddings = nn.Parameter(torch.zeros(1, self.n_patches//self.numModal, hidden_size))
-        self.segment_Embedding=nn.Parameter(torch.cat([torch.ones(1, (self.n_patches//self.numModal)+1, hidden_size)*i for i in range(self.numModal)],1))
+        self.position_embeddings = nn.Parameter(torch.zeros(1, self.n_patches, hidden_size))
+        self.segment_Embedding=nn.Parameter(torch.ones(1, self.n_patches, hidden_size))*modality
         self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
-
-        self.dropout = nn.Dropout(dropout_rate)    
-            
+        
         self.dropout = nn.Dropout(dropout_rate)
+        trunc_normal_(self.position_embeddings, mean=0.0, std=0.02, a=-2.0, b=2.0)
+        trunc_normal_(self.segment_Embedding, mean=0.0, std=0.02, a=-2.0, b=2.0)
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            self.trunc_normal_(m.weight, mean=0.0, std=0.02, a=-2.0, b=2.0)
+            trunc_normal_(m.weight, mean=0.0, std=0.02, a=-2.0, b=2.0)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
-
-    def trunc_normal_(self, tensor, mean, std, a, b):
-        # From PyTorch official master until it's in a few official releases - RW
-        # Method based on https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf
-        def norm_cdf(x):
-            return (1.0 + math.erf(x / math.sqrt(2.0))) / 2.0
-
-        with torch.no_grad():
-            l = norm_cdf((a - mean) / std)
-            u = norm_cdf((b - mean) / std)
-            tensor.uniform_(2 * l - 1, 2 * u - 1)
-            tensor.erfinv_()
-            tensor.mul_(std * math.sqrt(2.0))
-            tensor.add_(mean)
-            tensor.clamp_(min=a, max=b)
-            return tensor
 
     def forward(self, x):
         if self.pos_embed == "conv" :
@@ -180,6 +164,11 @@ class PatchModalEmbBlock(nn.Module):
             x= x.flatten(2).transpose(-1, -2)
         else:
             x=self.patch_embeddings(x)     
-            
-        x = self.dropout(x)
-        return x
+        
+        embeddings = x + self.position_embeddings+self.segment_Embedding
+        embeddings = self.dropout(embeddings)
+        return embeddings
+
+
+        
+        

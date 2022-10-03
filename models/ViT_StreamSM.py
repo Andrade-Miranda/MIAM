@@ -150,6 +150,7 @@ class ViT_S(nn.Module):
         num_classes: int = 2,
         dropout_rate: float = 0.0,
         spatial_dims: int = 3,
+        fusion: str="Concatenation"
     ) -> None:
         """
         Args:
@@ -186,7 +187,8 @@ class ViT_S(nn.Module):
 
         if hidden_size % num_heads != 0:
             raise ValueError("hidden_size should be divisible by num_heads.")
-
+        
+        self.fusion=fusion
         self.numModal=numModal
         self.classification = classification
         self.patch_embedding = nn.ModuleList(
@@ -200,6 +202,7 @@ class ViT_S(nn.Module):
                                 pos_embed=pos_embed,
                                 dropout_rate=dropout_rate,
                                 spatial_dims=spatial_dims,
+                                modality=i
                                 )for i in range(numModal)]
                         )
         self.blocks = nn.ModuleList(
@@ -214,7 +217,14 @@ class ViT_S(nn.Module):
         inputTok=[]
         for i in range(self.numModal):
             inputTok.append(self.patch_embedding[i](x[i]))
-        x=torch.cat(inputTok,1)
+            
+        if self.fusion=="Concatenation":
+            x=torch.cat(inputTok,1)
+        elif self.fusion=="Suma":
+            x=torch.stack(inputTok, dim=0).sum(dim=0)
+        else:
+            raise ValueError("Option no available")
+            
         if self.classification:
             cls_token = self.cls_token.expand(x.shape[0], -1, -1)
             x = torch.cat((cls_token, x), dim=1)
@@ -227,17 +237,6 @@ class ViT_S(nn.Module):
         if self.classification:
             x = self.classification_head(x[:, 0])
         return x, hidden_states_out
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -303,16 +302,18 @@ class ViT_M(nn.Module):
             raise ValueError("hidden_size should be divisible by num_heads.")
 
         self.classification = classification
-        self.patch_embedding = PatchEmbeddingBlock(
-            in_channels=in_channels,
-            img_size=img_size,
-            patch_size=patch_size,
-            hidden_size=hidden_size,
-            num_heads=num_heads,
-            pos_embed=pos_embed,
-            dropout_rate=dropout_rate,
-            spatial_dims=spatial_dims,
-        )
+        self.patch_embedding = nn.ModuleList(
+                        [PatchEmbeddingBlock(
+                            in_channels=in_channels,
+                            img_size=img_size,
+                            patch_size=patch_size,
+                            hidden_size=hidden_size,
+                            num_heads=num_heads,
+                            pos_embed=pos_embed,
+                            dropout_rate=dropout_rate,
+                            spatial_dims=spatial_dims,
+                        )for i in range(numModal)]
+                        )
         self.blocks = nn.ModuleList(
             [CoATTBlock(hidden_size, mlp_dim, num_heads, dropout_rate) if (i+1)%2 ==0 else MultiTransformerBlock(numModal,hidden_size, mlp_dim, num_heads, dropout_rate) for i in range(num_layers+1)]
         )

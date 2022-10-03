@@ -11,12 +11,13 @@ Created on Tue Dec  7 14:26:58 2021
 import torch
 import torch.nn as nn
 
-from monai.networks.blocks.dynunet_block import UnetOutBlock,get_conv_layer,get_act_layer,get_norm_layer
+from monai.networks.blocks.dynunet_block import UnetOutBlock,get_conv_layer
 from monai.networks.blocks.unetr_block import UnetrBasicBlock
 from .ViT_StreamSM import ViT_S
 from monai.utils import ensure_tuple_rep
 from torch.nn import init
 from util.util import print_network
+from util.block import FusedGatedUnit
 from .decoder import CNN_PuPMLA
 import einops
 
@@ -74,56 +75,6 @@ class BasicUnetEnc(nn.ModuleList):
             y.append(x)
         return y       
 
-
-class CommonFeatureSpace(nn.ModuleList):
-
-    def __init__(
-       self,
-       spatial_dims,
-       in_channels,
-       out_channels,
-       norm_name
-
-    ):
-        super(CommonFeatureSpace,self).__init__()
-        
-        self.convM1 = get_conv_layer(
-            spatial_dims,
-            in_channels,
-            out_channels,
-            kernel_size=1,
-            stride=1,
-            conv_only=True,
-            bias=True
-        )
-        
-        self.convM2 = get_conv_layer(
-            spatial_dims,
-            in_channels,
-            out_channels,
-            kernel_size=1,
-            stride=1,
-            conv_only=True,
-            bias=True
-        )
-        
-        self.sigmoid = get_act_layer(name='sigmoid')
-        self.norm1 = get_norm_layer(name='instance', spatial_dims=spatial_dims)
-        self.norm2 = get_norm_layer(name='instance', spatial_dims=spatial_dims)
-        self.norm3 = get_norm_layer(name='instance', spatial_dims=spatial_dims)
-    
-    def forward(self,M1,M2,M12):
-        fM1=self.norm1(self.convM1(torch.cat((self.norm1(M1),self.norm1(M12[0])),1)))
-        fM2=self.norm2(self.convM2(torch.cat((self.norm2(M1),self.norm2(M12[1])),1)))
-        fhatM1=self.sigmoid(fM1)*fM1
-        fhatM2=self.sigmoid(fM2)*fM2
-
-        Fm12=self.norm3(self.norm3(fhatM1)+self.norm3(fhatM2))
-        
-        return Fm12
-
-
-        
 
   
 
@@ -215,12 +166,11 @@ class MultiCNNHeavy_VITsingle(nn.Module):
             classification=self.classification,
             dropout_rate=dropout_rate,
             spatial_dims=spatial_dims,
+            fusion=self.opt.Earlyfusion
         )
         """ ------------------------------------------------------------- """  
-        self.ProjShared=CommonFeatureSpace(spatial_dims,
-               in_channels=hidden_size+filters_Encoder[-1],
-               out_channels=hidden_size,
-               norm_name=norm_name)
+        self.ProjShared=FusedGatedUnit(hidden_size,
+               hidden_size,in_channels)
         
         
         """ -------------------CNN decoders------------------------------- """
@@ -288,8 +238,8 @@ class MultiCNNHeavy_VITsingle(nn.Module):
         
         outViT, hidden_states_out = self.vit(lastConv)
         outViT = einops.rearrange(outViT, "b (Np n) H -> b n Np H",n=numnoda)
-        decfinal=[self.proj_feat(outViT[:,i], self.hidden_size, self.feat_size) for i in range(numnoda)]
-        decfinal=self.ProjShared(lastConv[0],lastConv[1],decfinal)
+        decfinal=self.ProjShared(outViT)
+        decfinal=self.proj_feat(decfinal, self.hidden_size, self.feat_size)
         decfinal= self.UpsamplingConv(decfinal)
         
         j=-1

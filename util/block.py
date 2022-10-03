@@ -4,7 +4,95 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional
+from monai.networks.blocks.dynunet_block import get_conv_layer,get_act_layer,get_norm_layer
 
+
+class FusedGatedUnit(nn.Module):
+    def __init__(self, input_dimension, output_dimension,num_modalities):
+        super(FusedGatedUnit, self).__init__()
+        self.fc_embeddings = nn.ModuleList()
+        for i in range(num_modalities):
+            self.fc_embeddings.append(nn.Linear(input_dimension, output_dimension))
+        self.cg = ContextGating(output_dimension)
+
+    def forward(self, x):
+        xin=[]
+        for i in range(x.shape[1]):
+            xin.append(self.fc_embeddings[i](x[:,i]))
+        x = torch.stack(xin, dim=0).sum(dim=0)
+        x = self.cg(x)
+        return x
+
+
+class ContextGating(nn.Module):
+    def __init__(self, dimension):
+        super(ContextGating, self).__init__()
+        self.fc = nn.Linear(dimension, dimension)
+
+    def forward(self, x):
+        x1 = self.fc(x)
+        x = torch.cat((x, x1), 1)
+        return functional.glu(x, 1)
+
+
+class CommonFeatureSpace(nn.ModuleList):
+    def __init__(
+       self,
+       spatial_dims,
+       in_channels,
+       out_channels,
+       norm_name
+
+    ):
+        super(CommonFeatureSpace,self).__init__()
+        
+        self.convM1 = get_conv_layer(
+            spatial_dims,
+            in_channels,
+            out_channels,
+            kernel_size=1,
+            stride=1,
+            conv_only=True,
+            bias=True
+        )
+        
+        self.convM2 = get_conv_layer(
+            spatial_dims,
+            in_channels,
+            out_channels,
+            kernel_size=1,
+            stride=1,
+            conv_only=True,
+            bias=True
+        )
+        
+        self.sigmoid = get_act_layer(name='sigmoid')
+        self.norm1 = get_norm_layer(name='instance', spatial_dims=spatial_dims)
+        self.norm2 = get_norm_layer(name='instance', spatial_dims=spatial_dims)
+        self.norm3 = get_norm_layer(name='instance', spatial_dims=spatial_dims)
+    
+    def forward(self,M1,M2,M12):
+        fM1=self.norm1(self.convM1(torch.cat((self.norm1(M1),self.norm1(M12[0])),1)))
+        fM2=self.norm2(self.convM2(torch.cat((self.norm2(M1),self.norm2(M12[1])),1)))
+        fhatM1=self.sigmoid(fM1)*fM1
+        fhatM2=self.sigmoid(fM2)*fM2
+
+        Fm12=self.norm3(self.norm3(fhatM1)+self.norm3(fhatM2))
+        
+        return Fm12
+
+
+
+
+
+
+
+
+
+
+
+
+###################################PH######################################
 class SingleConv(nn.Module):
     ''' {Conv2d, BN, ReLU} '''
     

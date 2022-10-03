@@ -25,6 +25,7 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--spatial_dims', type=int, default=3, help='The network will be 2D or 3D')
         self.parser.add_argument('--lr', type=float, default=5e-4, metavar='LR',help='learning rate (default: 5e-4)')
         self.parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
+        self.parser.add_argument('--Earlyfusion', type=str, default="Concatenation", help='type of early fusion')
 
 ####################OPTION AVAILABLE only with config contrastive###################################""""        
         self.parser.add_argument('--lambdaCNN', type=float, default=1e-1, help='lambda contrastive CNN')

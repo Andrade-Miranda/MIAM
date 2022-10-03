@@ -18,6 +18,8 @@ from monai.utils import ensure_tuple_rep
 from torch.nn import init
 from util.util import print_network
 from .decoder import CNN_PuPMLA
+from util.block import FusedGatedUnit
+
 
 
 """ Basic Unet 
@@ -155,25 +157,26 @@ class MultiCNNHeavy_VITCrossVit(nn.Module):
             sm_dim=hidden_size,
             lg_dim=hidden_size,
             sm_patch_size = feature_size,
-            sm_enc_depth = 4,
+            sm_enc_depth = 1,
             sm_enc_heads = num_heads,
             sm_enc_mlp_dim = mlp_dim,
             sm_enc_dim_head = 64,
             lg_patch_size = feature_size,
-            lg_enc_depth = 4,
+            lg_enc_depth = 1,
             lg_enc_heads = num_heads,
             lg_enc_mlp_dim = mlp_dim,
             lg_enc_dim_head = 64,
-            cross_attn_depth = 2,
+            cross_attn_depth = 1,
             cross_attn_heads = num_heads,
             cross_attn_dim_head = 64,
-            depth = 3,
+            depth = self.num_layers,
             dropout = opt.dropout_rate,
             emb_dropout = 0.1,
             pos_embed=pos_embed
             )
         """ ------------------------------------------------------------- """  
-        
+        self.ProjShared=FusedGatedUnit(hidden_size,
+               hidden_size,in_channels)
         
         """ -------------------CNN decoders------------------------------- """
         self.UpsamplingConv=get_conv_layer(
@@ -242,8 +245,9 @@ class MultiCNNHeavy_VITCrossVit(nn.Module):
         for modal in skip:
             lastConv.append(self.MaxPool(modal))# list of tensor    
         
-        outViT = self.vit(lastConv[0],lastConv[1])
-        decfinal = self.proj_feat(outViT, self.hidden_size, self.feat_size)
+        outViT,hidden_states = self.vit(lastConv[0],lastConv[1])
+        decfinal=self.ProjShared(outViT)
+        decfinal = self.proj_feat(decfinal, self.hidden_size, self.feat_size)
         decfinal= self.UpsamplingConv(decfinal)
         
         j=-1

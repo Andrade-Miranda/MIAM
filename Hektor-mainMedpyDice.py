@@ -23,7 +23,7 @@ if opt.Deterministic:
     set_determinism(seed)
     np.random.seed(seed)
     random.seed(seed)
-
+##############################################################################
 
 
 """------------------------------------------------------------"""
@@ -39,11 +39,12 @@ if len(opt.gpu_ids) == 0:
 data_loader = CreateDataLoader(opt)
 train_loader,val_loader,datalen = data_loader.load_data()
 print('#Datasize = %d: Training:%d   Validation:%d' % (len(data_loader),datalen[0],datalen[1]))
+########################################################################################################
     
 """ Multiples GPU """ 
 model = create_model(opt)
-x=torch.rand((1,2,128,128,128))
-y=model(x)
+# x=torch.rand((2,2,128,128,128))
+# y=model(x)
 """---------------------"""
 trainConfig=TrainSetup(opt,model)
 print('#Config Training scheme created')
@@ -89,9 +90,9 @@ for epoch in range(max_epochs):
         with torch.cuda.amp.autocast():
             outputs = model(inputs)
             loss = trainConfig.Config.loss_function(outputs, labels)
-        # trainConfig.Config.scaler.scale(loss).backward()
-        # trainConfig.Config.scaler.step(trainConfig.Config.optimizer)
-        # trainConfig.Config.scaler.update()
+        trainConfig.Config.scaler.scale(loss).backward()
+        trainConfig.Config.scaler.step(trainConfig.Config.optimizer)
+        trainConfig.Config.scaler.update()
             
         epoch_loss += loss.item()
             

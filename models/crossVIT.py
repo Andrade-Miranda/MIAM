@@ -69,10 +69,10 @@ class Attention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias = False)
         self.to_kv = nn.Linear(dim, inner_dim * 2, bias = False)
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim),
-            nn.Dropout(dropout)
-        )
+        # self.to_out = nn.Sequential(
+        #     nn.Linear(inner_dim, dim),
+        #     nn.Dropout(dropout)
+        # )
 
     def forward(self, x, context = None, kv_include_self = False):
         b, n, _, h = *x.shape, self.heads
@@ -91,7 +91,7 @@ class Attention(nn.Module):
 
         out = einsum('b h i j, b h j d -> b h i d', attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out)
+        return out#self.to_out(out)
 
 # transformer encoder, for small and large patches
 
@@ -145,8 +145,8 @@ class CrossTransformer(nn.Module):
         (sm_cls, sm_patch_tokens), (lg_cls, lg_patch_tokens) = map(lambda t: (t[:, :1], t[:, 1:]), (sm_tokens, lg_tokens))
 
         for sm_attend_lg, lg_attend_sm in self.layers:
-            sm_cls = sm_attend_lg(sm_cls, context = lg_patch_tokens, kv_include_self = True) + sm_cls
-            lg_cls = lg_attend_sm(lg_cls, context = sm_patch_tokens, kv_include_self = True) + lg_cls
+            sm_patch_tokens = sm_attend_lg(sm_patch_tokens, context = lg_patch_tokens, kv_include_self = False) #+ sm_cls
+            lg_patch_tokens = lg_attend_sm(lg_patch_tokens, context = sm_patch_tokens, kv_include_self = False) #+ lg_cls
 
         sm_tokens = torch.cat((sm_cls, sm_patch_tokens), dim = 1)
         lg_tokens = torch.cat((lg_cls, lg_patch_tokens), dim = 1)
@@ -178,11 +178,12 @@ class MultiScaleEncoder(nn.Module):
             ]))
 
     def forward(self, sm_tokens, lg_tokens):
+        hidden_states_out = []
         for sm_enc, lg_enc, cross_attend in self.layers:
             sm_tokens, lg_tokens = sm_enc(sm_tokens), lg_enc(lg_tokens)
             sm_tokens, lg_tokens = cross_attend(sm_tokens, lg_tokens)
-
-        return sm_tokens, lg_tokens
+            hidden_states_out.append(torch.cat([sm_tokens[:,1:,:], lg_tokens[:,1:,:]],dim=1))
+        return sm_tokens, lg_tokens,hidden_states_out
 
 # patch-based image to token embedder
 
@@ -336,14 +337,14 @@ class CrossViT(nn.Module):
             dropout = dropout
         )
 
-        self.sm_mlp_head = nn.Sequential(nn.LayerNorm(sm_dim), nn.Linear(sm_dim, num_classes))
-        self.lg_mlp_head = nn.Sequential(nn.LayerNorm(lg_dim), nn.Linear(lg_dim, num_classes))
+        #self.sm_mlp_head = nn.Sequential(nn.LayerNorm(sm_dim), nn.Linear(sm_dim, num_classes))
+        #self.lg_mlp_head = nn.Sequential(nn.LayerNorm(lg_dim), nn.Linear(lg_dim, num_classes))
 
     def forward(self, x,y):
         sm_tokens = self.sm_image_embedder(x)
         lg_tokens = self.lg_image_embedder(y)
 
-        sm_tokens, lg_tokens = self.multi_scale_encoder(sm_tokens, lg_tokens)
+        sm_tokens, lg_tokens,hidden_states_out = self.multi_scale_encoder(sm_tokens, lg_tokens)
 
         sm_cls, lg_cls = map(lambda t: t[:, 0], (sm_tokens, lg_tokens))
         
@@ -352,4 +353,4 @@ class CrossViT(nn.Module):
         #sm_logits = self.sm_mlp_head(sm_cls)
         #lg_logits = self.lg_mlp_head(lg_cls)
 
-        return sm_tokens[:,1:,:] + lg_tokens[:,1:,:]
+        return torch.stack([sm_tokens[:,1:,:],lg_tokens[:,1:,:]],dim=1),hidden_states_out

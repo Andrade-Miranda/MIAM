@@ -48,6 +48,10 @@ def create_model(opt):
         elif opt.encoder=='SCNN_h+VIT_m':#si
             from .SCNNh_VITm import SharedCNN_VITMultiple  
             model = SharedCNN_VITMultiple(opt)
+        elif opt.encoder=='SCNN_h+VIT_cv':#si
+            from .SCNNh_VITcv import SharedCNN_VITCrossVit  
+            model = SharedCNN_VITCrossVit(opt)
+        #############SOTA####################################"
         elif opt.encoder=='nnFormer':#si
             from .nnFormer import nnformer   
             model = nnformer(opt)
@@ -58,12 +62,14 @@ def create_model(opt):
         elif opt.encoder=='Swinfuse':#si
             from .SwinFuse import Swinfuse   
             model = Swinfuse(opt)
+        ###############Contrastive##################################"
         elif opt.encoder=='MCNN_h+VIT_n-CL':#si 'MCNN_h+VIT_n'+contrastive learning
             from .MCNNh_VITn_CL import MCNNHeavy_VITnaive_CL  
             model = MCNNHeavy_VITnaive_CL(opt)
         elif opt.encoder=='SCNN_h+VIT_n-CL':#si 'SCNN_h+VIT_n-CL'+ contrastive learning
             from .SCNNh_VITn_CL import SharedCNN_VITNaive_CL  
             model = SharedCNN_VITNaive_CL(opt)
+        #####################TWO by TWO for brats###################################
         elif opt.encoder=='MCNN_h+VIT_n-T1T2':#si
             from .MCNNh_VITn_T1T2 import MultiCNNHeavy_VITNaive    
             model = MultiCNNHeavy_VITNaive(opt)
@@ -73,6 +79,7 @@ def create_model(opt):
         elif opt.encoder=='MCNN_h+VIT_m-T1T2':#si
             from .MCNNh_VITm_T1T2 import MultiCNNHeavy_VITmultiple   
             model = MultiCNNHeavy_VITmultiple(opt)
+    ###################################NO HYBRID##############################
     else:
         assert any(opt.encoder==name for name in encoderOption)
         assert any(opt.decoder==name for name in decoderOption)
@@ -85,21 +92,7 @@ def create_model(opt):
         elif opt.encoder=='VIT_m':#si
             from .VITm import VITMultiple    
             model = VITMultiple(opt)
-        elif opt.encoder=='Unet':#si
-            from .netMisc import UnetMonai
-            model = UnetMonai(opt)
-        elif opt.encoder=='MCNN_h':#si
-            from .MCNNh import MultiCNNHeavy
-            model = MultiCNNHeavy(opt)
-        elif opt.encoder=='MCNN_h+VIT-backbone':#si
-            from .MCNNh_VIT_Backbone import MultiCNNHeavy
-            model = MultiCNNHeavy(opt)
-        elif opt.encoder=='SegResNet':#si
-            from .netMisc import SegResNetModel
-            model = SegResNetModel(opt)
-        elif opt.encoder=='SegResNetVAE':#si
-            from .netMisc import SegResNetVAEModel
-            model = SegResNetVAEModel(opt)
+        ###################### SOTA VIT#####################
         elif opt.encoder=='UNETR':#si
             from .netMisc import UNETRModel
             model = UNETRModel(opt)
@@ -109,17 +102,36 @@ def create_model(opt):
         elif opt.encoder=='SwinTrans3DSimple':#no
             from .SwinTrans3DS import SwinTransformer3DSimple  
             model = SwinTransformer3DSimple(opt) 
+        ################SOTA CNN######################
+        elif opt.encoder=='Unet':#si
+            from .netMisc import UnetMonai
+            model = UnetMonai(opt)
+        elif opt.encoder=='MCNN_h':#si
+            from .MCNNh import MultiCNNHeavy
+            model = MultiCNNHeavy(opt)
+        elif opt.encoder=='ConVnext-UNet':#si
+            from .ConvNeXt_Unet import ConvNeXt_Unet
+            model = ConvNeXt_Unet(opt)
+        elif opt.encoder=='SegResNet':#si
+            from .netMisc import SegResNetModel
+            model = SegResNetModel(opt)
+        elif opt.encoder=='SegResNetVAE':#si
+            from .netMisc import SegResNetVAEModel
+            model = SegResNetVAEModel(opt)
+        ######################TWO by TWO for brats#############################
         elif opt.encoder=='VIT_s-T1T2':#si
             from .ViTs_T1T2 import VITSingle    
             model = VITSingle(opt)
         elif opt.encoder=='VIT_m-T1T2':#no
             from .ViTm_T1T2 import VITMultiple    
             model = VITMultiple(opt)
-        elif opt.encoder=='ConVnext-UNet':#si
-            from .ConvNeXt_Unet import ConvNeXt_Unet
-            model = ConvNeXt_Unet(opt)
-      
-
+        elif opt.encoder=='VIT_cv-T1T2':#no
+            from .ViTcv_T1T2 import VITCrossVit    
+            model = VITCrossVit(opt)
+        ##############DEPRECATED###################"
+        elif opt.encoder=='MCNN_h+VIT-backbone':#DEPRECATED
+            from .MCNNh_VIT_Backbone import MultiCNNHeavy
+            model = MultiCNNHeavy(opt)        
 
     print("model [%s] was created" % (model.name()))
     return model.init_net(model)
