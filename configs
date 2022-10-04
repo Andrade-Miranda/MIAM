@@ -1,3 +1,5 @@
+###HEKTOR splits_final_byTypeofcenter -> cada center en val
+
 
 #SwinTrans3D
 --dataroot Task002_Hektor --output_dir ./Output/5fold --encoder SwinTrans3D --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseTrainConfig --patchSize 2 --batchSize 2 --epochs 5 --gpu_ids -1 --hidden_size 48 --lr 1e-3 --fold 51 --region None --input_nc 2 --output_nc 1  --loadsplit Hektor_5fold.pkl
@@ -5,6 +7,17 @@
 #MCNN_h+VIT_s
 --dataroot Task002_Hektor --output_dir ./Output/ --encoder MCNN_h+VIT_s --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseTrainConfig --patchSize 1 --batchSize 2 --epochs 5 --gpu_ids -1 --hidden_size 512 --num_layers 8 --mlp_dim 2048 --num_heads 8  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 1e-3 --fold 0 --region None --input_nc 2 --output_nc 1  --loadsplit Hektor_5fold.pkl --hybrid
 
+#swinfuse
+--dataroot Task002_Hektor --output_dir ./Output/ --encoder Swinfuse --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseTrainConfig --patchSize 2 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 48 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --lr 1e-3 --fold 0 --region None --input_nc 2 --output_nc 1  --loadsplit splits_final_byTypeofcenter.pkl --hybrid
+
+#transfuse
+--dataroot Task002_Hektor --output_dir ./Output/ --encoder Transfuse --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseTrainConfig --patchSize 16 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --lr 1e-3 --fold 0 --region None --input_nc 2 --output_nc 1  --loadsplit splits_final_byTypeofcenter.pkl --hybrid
+
+#convnext
+--dataroot Task002_Hektor --output_dir ./Output/ --encoder ConVnext-UNet --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseTrainConfig --filters_Encoder 96 192 384 768  --VAL_AMP --lr 1e-3 --fold 0 --region None --input_nc 2 --output_nc 1  --loadsplit splits_final_byTypeofcenter.pkl 
+
+#nnformer
+--dataroot Task002_Hektor --output_dir ./Output/ --encoder nnFormer --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseTrainConfig  --VAL_AMP --lr 1e-3 --fold 0 --region None --input_nc 2 --output_nc 1  --loadsplit splits_final_byTypeofcenter.pkl --hybrid
 
 
 #VIT_sT1T2
@@ -25,11 +38,7 @@
 #VIT_s
 --name VITs --encoder VIT_s --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 16 --batchSize 1 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 2e-3 --fold 0  
 
-#swinfuse
---name Swinfuse --encoder Swinfuse --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 2 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 48 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --lr 2e-3 --fold 0 --hybrid
 
-#transfuse
---name transfuse --encoder Transfuse --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 16 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --lr 2e-3 --fold 0 --hybrid
 
 #SCNN_h+VIT_n-CL
 --name SCNN_h+VIT_n-CL --encoder SCNN_h+VIT_n-CL --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig+ContrasLearn --patchSize 1 --batchSize 2 --epochs 1 --gpu_ids -1 --hidden_size 768 --num_layers 12 --mlp_dim 3072 --num_heads 12  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 2e-3 --fold 0 --hybrid

@@ -73,6 +73,10 @@ class BaseOptions():
         #take always FULLRES
         self.opt.stage=len(CurrentPlan['plans_per_stage'])-1
         self.opt.planning_stage='nnUNetData_plans_v2.1_stage'+str(self.opt.stage)
+        
+        self.opt.num_pool_per_axis=CurrentPlan['plans_per_stage'][self.opt.stage]['num_pool_per_axis']
+        self.opt.pool_op_kernel_sizes=CurrentPlan['plans_per_stage'][self.opt.stage]['pool_op_kernel_sizes'] 
+        self.opt.conv_kernel_sizes=CurrentPlan['plans_per_stage'][self.opt.stage]['conv_kernel_sizes']
            
         if self.opt.imageSize!=0:
             pass

@@ -1,23 +1,171 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Dec  7 14:26:58 2021
+Created on Wed Sep 29 14:28:54 2021
 
 @author: gustavo
 """
 
 
-
+import math
 import torch
 import torch.nn as nn
 
-from monai.networks.blocks.dynunet_block import UnetOutBlock,get_conv_layer,get_act_layer,get_norm_layer
+from monai.networks.blocks.dynunet_block import UnetOutBlock,get_conv_layer
+from monai.networks.blocks.unetr_block import UnetrBasicBlock
 from monai.networks.nets.vit import ViT
 from monai.utils import ensure_tuple_rep
 from torch.nn import init
 from util.util import print_network
 from .decoder import CNN_PuPMLA
-from .encoder import SiameseEncoder
+
+
+from typing import Optional, Sequence, Tuple, Union
+import numpy as np
+from monai.networks.layers.utils import get_act_layer, get_norm_layer
+from monai.utils import optional_import
+einops, _ = optional_import("einops")
+
+
+class UnetResBlock(nn.Module):
+    """
+    A skip-connection based module that can be used for DynUNet, based on:
+    `Automated Design of Deep Learning Methods for Biomedical Image Segmentation <https://arxiv.org/abs/1904.08128>`_.
+    `nnU-Net: Self-adapting Framework for U-Net-Based Medical Image Segmentation <https://arxiv.org/abs/1809.10486>`_.
+
+    Args:
+        spatial_dims: number of spatial dimensions.
+        in_channels: number of input channels.
+        out_channels: number of output channels.
+        kernel_size: convolution kernel size.
+        stride: convolution stride.
+        norm_name: feature normalization type and arguments.
+        act_name: activation layer type and arguments.
+        dropout: dropout probability.
+
+    """
+
+    def __init__(
+        self,
+        num_modalities: int,
+        spatial_dims: int,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[Sequence[int], int],
+        stride: Union[Sequence[int], int],
+        norm_name: Union[Tuple, str],
+        act_name: Union[Tuple, str] = ("leakyrelu", {"inplace": True, "negative_slope": 0.01}),
+        dropout: Optional[Union[Tuple, str, float]] = None,
+    ):
+        super().__init__()
+        self.num_modalities=num_modalities
+        self.conv1 = get_conv_layer(
+            spatial_dims,in_channels,out_channels,kernel_size=kernel_size,stride=stride,dropout=dropout,conv_only=True,
+        )
+        self.conv2 = get_conv_layer(
+            spatial_dims, out_channels, out_channels, kernel_size=kernel_size, stride=1, dropout=dropout, conv_only=True
+        )
+        self.conv3 = get_conv_layer(
+            spatial_dims, in_channels, out_channels, kernel_size=1, stride=stride, dropout=dropout, conv_only=True
+        )
+        self.lrelu = get_act_layer(name=act_name)
+        
+        self.norm1 = nn.ModuleList(
+            [get_norm_layer(name=norm_name, spatial_dims=spatial_dims, channels=out_channels) for i in range(num_modalities)]
+        )
+        
+        self.norm2 = nn.ModuleList(
+            [get_norm_layer(name=norm_name, spatial_dims=spatial_dims, channels=out_channels) for i in range(num_modalities)]
+        )
+        
+        self.norm3 = nn.ModuleList(
+            [get_norm_layer(name=norm_name, spatial_dims=spatial_dims, channels=out_channels) for i in range(num_modalities)]
+        )        
+        self.downsample = in_channels != out_channels
+        stride_np = np.atleast_1d(stride)
+        if not np.all(stride_np == 1):
+            self.downsample = True
+
+    def forward(self, inp,j):
+        residual = inp
+        if j==0:
+            x = einops.rearrange(inp, "b m d w l -> (b m) 1 d w l")
+        else:
+            x = inp
+            
+        out = self.conv1(x)
+        out = einops.rearrange(out, " (b m) f d w l -> b m f d w l", m=self.num_modalities)
+        for i in range(out.shape[1]):
+            out[:,i,:,:,:,:] = self.norm1[i](out[:,i,:,:,:,:])
+        out = self.lrelu(out)
+        out = einops.rearrange(out, "b m f d w l -> (b m) f d w l")
+        out = self.conv2(out)
+        out = einops.rearrange(out, " (b m) f d w l -> b m f d w l", m=self.num_modalities)
+        for i in range(out.shape[1]):
+            out[:,i,:,:,:,:] = self.norm2[i](out[:,i,:,:,:,:])        
+        if self.downsample:
+            if j==0:
+                residual = einops.rearrange(residual, "b m d w l -> (b m) 1 d w l")
+            residual = self.conv3(residual)
+            residual = einops.rearrange(residual, " (b m) f d w l -> b m f d w l", m=self.num_modalities)
+            for i in range(residual.shape[1]):
+                residual[:,i,:,:,:,:] = self.norm3[i](residual[:,i,:,:,:,:])
+        out += residual
+        out = self.lrelu(out)
+        out = einops.rearrange(out, " b m f d w l -> (b m) f d w l")
+        return out
+
+
+""" Basic Unet 
+    A UNet Encoder block  implementation with 1D/2D/3D supports.
+        Based on:
+Falk et al. "U-Net – Deep Learning for Cell Counting, Detection, and
+Morphometry". Nature Methods 16, 67–70 (2019), DOI:http://dx.doi.org/10.1038/s41592-018-0261-2
+    Adapted from Monai
+"""
+""" CNN heavy --CNN_h
+"""
+class BasicUnetEnc(nn.ModuleList):
+
+    def __init__(
+       self,
+       num_modalities,
+       spatial_dims,
+       in_channels,
+       features,
+       norm_name
+    ):
+        self.num_modalities=num_modalities
+        super(BasicUnetEnc,self).__init__()
+        self.encoderList=nn.ModuleList()
+        for i in range(len(features)):
+            if i==0:
+                encoder= UnetResBlock(num_modalities=num_modalities,
+                                      spatial_dims= spatial_dims,
+                                      in_channels=in_channels,
+                                      out_channels=features[i],
+                                      kernel_size=3,
+                                      stride=1,
+                                      norm_name=norm_name
+                                      )
+            else:
+                encoder= UnetResBlock(num_modalities=num_modalities,
+                    spatial_dims=spatial_dims,
+                    in_channels=features[i-1],
+                    out_channels=features[i],
+                    kernel_size=3,
+                    stride=2,
+                    norm_name=norm_name
+                    )
+            self.encoderList.append(encoder)
+
+
+    def forward(self, x):
+        y=[]
+        for j in range(len(self.encoderList)):
+            x = self.encoderList[j](x,j)
+            y.append(einops.rearrange(x, " (b m) f d w l -> b (f m) d w l",m=self.num_modalities))
+        return y       
 
 
 
@@ -37,13 +185,10 @@ class SharedCNN_VITNaive(nn.Module):
         pos_embed=opt.pos_embed
         norm_name=opt.norm_name
         filters_Encoder=opt.filters_Encoder
-        res_block=opt.res_block
         dropout_rate= opt.dropout_rate
         spatial_dims= opt.spatial_dims
+        res_block=True
         self.opt=opt
-        
-        self.numModal= opt.input_nc
-        self.numConvLevel=len(filters_Encoder)
         """
         Args:
             in_channels: dimension of input channels (Modalities).
@@ -66,28 +211,29 @@ class SharedCNN_VITNaive(nn.Module):
         if not (0 <= dropout_rate <= 1):
             raise ValueError("dropout_rate should be between 0 and 1.")
         
+        self.modalities=in_channels
+    
         
-        """ -------Shared encoder with specialize normalization---------------"""
-        self.encodModalities = SiameseEncoder(
-            num_modalities=self.numModal,
+        """ -------multipath encoders------------------------------------- """
+        
+        self.encodModalities = BasicUnetEnc(
+            num_modalities=self.modalities,
             spatial_dims= spatial_dims,
-            in_channels= in_channels,
+            in_channels= 1,
             features= filters_Encoder,
             norm_name=norm_name,
-            kernel_sizes=opt.conv_kernel_sizes,
-            stride=opt.pool_op_kernel_sizes
             )
-        self.MaxPool=nn.MaxPool3d(3, stride=2,padding=0,dilation=1,ceil_mode=True)
         """ ----------------------------------------------------------------"""      
-       
+      
+        self.MaxPool=nn.MaxPool3d(3, stride=2,padding=0,dilation=1,ceil_mode=True)
         
         """ -------------------VIT encoders------------------------------- """      
         if hidden_size % num_heads != 0:
             raise ValueError("hidden_size should be divisible by num_heads.")
             
         self.num_layers = num_layers
-        downfactor=int(2**(len(filters_Encoder)))
-        img_size = tuple([int((x/downfactor)) for x in img_size])
+        downfactor=int(2**(len(filters_Encoder))) #for extra maxpooling
+        img_size = tuple([math.ceil((x/downfactor)) for x in img_size])
         
         img_size = ensure_tuple_rep(img_size, spatial_dims)
         self.patch_size = ensure_tuple_rep(feature_size, spatial_dims)
@@ -108,6 +254,9 @@ class SharedCNN_VITNaive(nn.Module):
             dropout_rate=dropout_rate,
             spatial_dims=spatial_dims,
         )
+        """ ------------------------------------------------------------- """  
+        
+        
         """ -------------------CNN decoders------------------------------- """
         self.UpsamplingConv=get_conv_layer(
             spatial_dims=spatial_dims,
@@ -129,6 +278,7 @@ class SharedCNN_VITNaive(nn.Module):
                    )
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0]* in_channels, out_channels=out_channels)
         """ ------------------------------------------------------------- """      
+        
         
         """ -------------------CNN reshape when last layer doesnt match------------------------------- """        
         if self.patch_size[0] > 1: 
@@ -157,35 +307,25 @@ class SharedCNN_VITNaive(nn.Module):
 
     def forward(self, x_in):
         
-        modal= [i for i in range(self.numModal)]
-        data= [x_in[:,i,None,:] for i in range(self.numModal)]
-        encModal=self.encodModalities(data,modal=modal)#modify for multiples modalities
-    
-        skip_connections=[]
-        for i in range(self.numConvLevel):
-            skip=[]
-            for j in range(self.numModal):
-                skip.append(encModal[j][i])# list of tensor
-            skip_connections.append(torch.cat(skip,1))
-            
-        maxPool=self.MaxPool(skip_connections[-1])    
-    
+        encModal=self.encodModalities(x_in)
+        maxPool=self.MaxPool(encModal[-1])
+        
         outViT, hidden_states_out = self.vit(maxPool)
         decfinal = self.proj_feat(outViT, self.hidden_size, self.feat_size)
         decfinal= self.UpsamplingConv(decfinal)
         
         j=-1
         for numdec in range(self.numConvLevel):
-            if numdec==0 and skip_connections[j].shape[-1]!=decfinal.shape[-1]:
+            if numdec==0 and encModal[j].shape[-1]!=decfinal.shape[-1]:
                 decfinal=self.reshapeConv(decfinal)
-            decfinal = self.decoder.decoderList[numdec](decfinal,skip_connections[j])#change to only concat
+            decfinal = self.decoder.decoderList[numdec](decfinal,encModal[j])#change to only concat
             j=j-1
         
         return self.out(decfinal)
-        
+    
 
     def name(self):
-        return 'Shared Encoder with instance normalization per modality'
+        return 'shared Heavy CNN + VIT Naive'
 
 
         """--------------------Initialize network weights.---------------"""   
@@ -241,8 +381,9 @@ class SharedCNN_VITNaive(nn.Module):
         else:
             model = model.to(self.opt.device)
         print_network(model)
+        print('#model created')
         """---------------------"""
-        self.init_weights(model, init_type, init_gain=init_gain)
+        #self.init_weights(model, init_type, init_gain=init_gain)
         return model
     """--------------------------------------------------------------------""" 
 
@@ -284,3 +425,14 @@ class SharedCNN_VITNaive(nn.Module):
 
 
 
+
+
+
+
+
+
+
+
+
+    
+ 

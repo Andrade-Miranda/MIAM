@@ -253,7 +253,7 @@ class MultiCNNHeavy_VITsingle(nn.Module):
     
 
     def name(self):
-        return 'Multipath with Heavy CNN + VIT Naive'
+        return 'Multipath with Heavy CNN + VIT Single'
 
 
         """--------------------Initialize network weights.---------------"""   

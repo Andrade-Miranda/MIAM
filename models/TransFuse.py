@@ -105,10 +105,10 @@ class TransFuse_S(nn.Module):# use Resnet34+ViTsmall
         num_classes= opt.output_nc
         img_size=opt.imageSize
         feature_size=opt.patchSize#16
-        hidden_size=opt.hidden_size#384
+        hidden_size=opt.hidden_size#768
         mlp_dim= opt.mlp_dim#1536
-        num_heads=opt.num_heads#6
-        num_layers=opt.num_layers#
+        num_heads=opt.num_heads#12
+        num_layers=opt.num_layers#12
         pos_embed=opt.pos_embed
         #norm_name=opt.norm_name
         #res_block=opt.res_block
@@ -232,10 +232,10 @@ class TransFuse_S(nn.Module):# use Resnet34+ViTsmall
         x_c_2 = self.up_c_2_2(x_c_1, x_c_2_1) # joint predict low supervise here
 
         # decoder part
-        map_x = F.interpolate(self.final_x(x_c), scale_factor=16, mode='trilinear')
-        map_1 = F.interpolate(self.final_1(x_b_2), scale_factor=4, mode='trilinear')
+        #map_x = F.interpolate(self.final_x(x_c), scale_factor=16, mode='trilinear')
+        #map_1 = F.interpolate(self.final_1(x_b_2), scale_factor=4, mode='trilinear')
         map_2 = F.interpolate(self.final_2(x_c_2), scale_factor=4, mode='trilinear')
-        return map_x, map_1, map_2
+        return map_2 #map_x, map_1, map_2
     
     
     def name(self):
@@ -357,15 +357,15 @@ class Attention_block(nn.Module):
         super(Attention_block,self).__init__()
         self.W_g = nn.Sequential(
             nn.Conv3d(F_g, F_int, kernel_size=1,stride=1,padding=0,bias=True),
-            nn.BatchNorm3d(F_int)
+            nn.InstanceNorm3d(F_int,affine=True)
             )
         self.W_x = nn.Sequential(
             nn.Conv3d(F_l, F_int, kernel_size=1,stride=1,padding=0,bias=True),
-            nn.BatchNorm3d(F_int)
+            nn.InstanceNorm3d(F_int,affine=True)
         )
         self.psi = nn.Sequential(
             nn.Conv3d(F_int, 1, kernel_size=1,stride=1,padding=0,bias=True),
-            nn.BatchNorm3d(1),
+            nn.InstanceNorm3d(1,affine=True),
             nn.Sigmoid()
         )
         self.relu = nn.ReLU(inplace=True)
@@ -383,14 +383,14 @@ class DoubleConv(nn.Module):
         super().__init__()
         self.double_conv = nn.Sequential(
             nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm3d(out_channels),
+            nn.InstanceNorm3d(out_channels),
             nn.ReLU(inplace=True),
             nn.Conv3d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm3d(out_channels)
+            nn.InstanceNorm3d(out_channels)
         )
         self.identity = nn.Sequential(
                 nn.Conv3d(in_channels, out_channels, kernel_size=1, padding=0),
-                nn.BatchNorm3d(out_channels)
+                nn.InstanceNorm3d(out_channels)
                 )
         self.relu = nn.ReLU(inplace=True)
 
@@ -402,11 +402,11 @@ class Residual(nn.Module):
     def __init__(self, inp_dim, out_dim):
         super(Residual, self).__init__()
         self.relu = nn.ReLU(inplace=True)
-        self.bn1 = nn.BatchNorm3d(inp_dim)
+        self.bn1 = nn.InstanceNorm3d(inp_dim)
         self.conv1 = Conv(inp_dim, int(out_dim/2), 1, relu=False)
-        self.bn2 = nn.BatchNorm3d(int(out_dim/2))
+        self.bn2 = nn.InstanceNorm3d(int(out_dim/2))
         self.conv2 = Conv(int(out_dim/2), int(out_dim/2), 3, relu=False)
-        self.bn3 = nn.BatchNorm3d(int(out_dim/2))
+        self.bn3 = nn.InstanceNorm3d(int(out_dim/2))
         self.conv3 = Conv(int(out_dim/2), out_dim, 1, relu=False)
         self.skip_layer = Conv(inp_dim, out_dim, 1, relu=False)
         if inp_dim == out_dim:
@@ -442,7 +442,7 @@ class Conv(nn.Module):
         if relu:
             self.relu = nn.ReLU(inplace=True)
         if bn:
-            self.bn = nn.BatchNorm3d(out_dim)
+            self.bn = nn.InstanceNorm3d(out_dim)
 
     def forward(self, x):
         assert x.size()[1] == self.inp_dim, "{} {}".format(x.size()[1], self.inp_dim)

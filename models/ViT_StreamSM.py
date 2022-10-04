@@ -239,11 +239,6 @@ class ViT_S(nn.Module):
         return x, hidden_states_out
 
 
-
-
-
-
-
 class ViT_M(nn.Module):
     """
     Vision Transformer (ViT), based on: "Dosovitskiy et al.,

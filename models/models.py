@@ -55,7 +55,6 @@ def create_model(opt):
         elif opt.encoder=='nnFormer':#si
             from .nnFormer import nnformer   
             model = nnformer(opt)
-            model = SharedCNN_VITMultiple(opt)
         elif opt.encoder=='Transfuse':#si
             from .TransFuse import TransFuse_S   
             model = TransFuse_S(opt)

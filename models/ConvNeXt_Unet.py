@@ -36,18 +36,10 @@ class ConvNeXt_Unet(nn.Module):
         in_channels=opt.input_nc
         out_channels= opt.output_nc
         img_size=opt.imageSize
-        feature_size=opt.patchSize
-        hidden_size=opt.hidden_size
-        mlp_dim= opt.mlp_dim
-        num_heads=opt.num_heads
-        num_layers=opt.num_layers
-        pos_embed=opt.pos_embed
-        norm_name=opt.norm_name
         filters_Encoder=opt.filters_Encoder
-        res_block=opt.res_block
         dropout_rate= opt.dropout_rate
         spatial_dims= opt.spatial_dims
-        name_model='convnext_tiny'
+        name_model='convnext_small'
         self.opt=opt
         
         self.Multiples_encoder=False
@@ -76,20 +68,15 @@ class ConvNeXt_Unet(nn.Module):
         
         
         """ -------multipath encoders------------------------------------- """
-        
         self.encodModalities,filters_Encoder =ConvNextEncoders(in_channels,name_model,Multiples_encoder=self.Multiples_encoder)
         self.conInp = nn.Conv3d(in_channels, filters_Encoder[0]//2, kernel_size=3, padding=1, groups=out_channels) # depthwise conv
         self.numConvLevel=len(filters_Encoder)
         """ ----------------------------------------------------------------"""      
        
-        self.skipDecoder = nn.ModuleList(
-           [ nn.Sequential(
-            nn.Conv3d(filters_Encoder[-i-2], filters_Encoder[0]//2, kernel_size=1, padding=0, groups=out_channels), 
-            nn.Upsample(scale_factor=2**(3-i), mode='trilinear', align_corners=True)
-            ) for i in range(len(filters_Encoder)-1)])
         self.decoder=ConVneXtDecoder(
                     features=filters_Encoder,
                     )
+        
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0]//2, out_channels=out_channels)
         """ ------------------------------------------------------------- """      
         
@@ -112,20 +99,16 @@ class ConvNeXt_Unet(nn.Module):
         #     for j in range(self.numModal):
         #         skip.append(encModal[j][i])
         #     skip_connections.append(torch.cat(skip,1))
-        upSampling=0
         j=-2
         for numdec in range(self.numConvLevel):
-            if numdec+1==self.numConvLevel:
-                skip[j]=self.conInp(skip[j])
-            encModal = self.decoder.decoderList[numdec](encModal,skip[j])#change to only concat
-            if numdec<len(self.skipDecoder):
-                upSampling=+self.skipDecoder[numdec](encModal)
+            if numdec==self.numConvLevel-1:
+               encModal = self.decoder.decoderList[numdec](encModal,self.conInp(skip[j]))#change to only concat
             else:
-                upSampling+=encModal
+                encModal = self.decoder.decoderList[numdec](encModal,skip[j])#change to only concat
             j=j-1
         
         
-        return self.out(upSampling)
+        return self.out(encModal)
     
 
     def name(self):

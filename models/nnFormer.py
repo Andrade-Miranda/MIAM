@@ -712,9 +712,9 @@ class PatchEmbed(nn.Module):
 class Encoder(nn.Module):
    
     def __init__(self,
-                 pretrain_img_size=224,
-                 patch_size=4,
-                 in_chans=1  ,
+                 pretrain_img_size,
+                 patch_size,
+                 in_chans,
                  embed_dim=96,
                  depths=[2, 2, 2, 2],
                  num_heads=[4, 8, 16, 32],
@@ -897,16 +897,17 @@ class final_patch_expanding(nn.Module):
                                          
 class nnformer(nn.Module):
 
-    def __init__(self,opt, crop_size=[128,128,128],#[64,128,128],
-                embedding_dim=192,
-                input_channels=4, 
-                num_classes=3, 
-                conv_op=nn.Conv3d, 
-                depths=[2,2,2,2],
-                num_heads=[6, 12, 24, 48],
-                patch_size=[4,4,4],#[2,4,4],
-                window_size=[4,4,8,4],
-                deep_supervision=False):#True I change the deep suppervision to false in order to work with my pipline
+    def __init__(self,opt): 
+        crop_size=opt.imageSize#[64,128,128],
+        embedding_dim=192
+        input_channels=opt.input_nc 
+        num_classes=opt.output_nc
+        conv_op=nn.Conv3d 
+        depths=[2,2,2,2]
+        num_heads=[6, 12, 24, 48]
+        patch_size=[4,4,4]#[2,4,4],
+        window_size=[4,4,8,4]
+        deep_supervision=False#True I change the deep suppervision to false in order to work with my pipline
       
         super(nnformer, self).__init__()
         

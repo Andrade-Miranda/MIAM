@@ -30,12 +30,14 @@ import torch.nn as nn
 
 from monai.networks.blocks.dynunet_block import UnetOutBlock,get_conv_layer
 from monai.networks.blocks.unetr_block import UnetrBasicBlock, UnetrPrUpBlock
-from .ViT_StreamSM import ViT_M
+from .crossVIT import  CrossViT
 from monai.utils import ensure_tuple_rep
 from torch.nn import init
 from util.util import print_network
 
-from .decoder import CNN_PuPMLA
+from .decoder import CNN_PuPMLA_VIT
+import einops
+from util.block import FusedGatedUnit
 
 
 
@@ -100,20 +102,31 @@ class VITMultiple(nn.Module):
         self.numConvLevel=len(filters_Encoder)
 
         
-        self.vit = ViT_M(
-            numModal=self.numModal,
+        self.vit = CrossViT(
+            image_size=img_size,
+            num_classes=opt.input_nc,
             in_channels=1,
-            img_size=img_size,
-            patch_size=self.patch_size,
-            hidden_size=hidden_size,
-            mlp_dim=mlp_dim,
-            num_layers=self.num_layers,
-            num_heads=num_heads,
-            pos_embed=pos_embed,
-            classification=self.classification,
-            dropout_rate=dropout_rate,
-            spatial_dims=spatial_dims,
-        )
+            sm_dim=hidden_size,
+            lg_dim=hidden_size,
+            sm_patch_size = feature_size,
+            sm_enc_depth = 1,
+            sm_enc_heads = num_heads,
+            sm_enc_mlp_dim = mlp_dim,
+            sm_enc_dim_head = 64,
+            lg_patch_size = feature_size,
+            lg_enc_depth = 1,
+            lg_enc_heads = num_heads,
+            lg_enc_mlp_dim = mlp_dim,
+            lg_enc_dim_head = 64,
+            cross_attn_depth = 1,
+            cross_attn_heads = num_heads,
+            cross_attn_dim_head = 64,
+            depth = self.num_layers,
+            dropout = opt.dropout_rate,
+            emb_dropout = 0.1,
+            pos_embed=pos_embed
+            )
+        
         """ ------------------------------------------------------------- """  
         self.encoder1 = UnetrBasicBlock(
             spatial_dims=spatial_dims,
@@ -160,19 +173,14 @@ class VITMultiple(nn.Module):
             conv_block=conv_block,
             res_block=res_block,
         )
-        """ -------------------CNN decoders------------------------------- """
-        self.UpsamplingConv=get_conv_layer(
-            spatial_dims=spatial_dims,
-            in_channels=hidden_size*self.numModal,
-            out_channels=hidden_size*self.numModal,
-            kernel_size=3,
-            stride=2,
-            conv_only=True,
-            is_transposed=True,
-            )
-        self.decoder=CNN_PuPMLA(
+        
+        """ ------------------------------------------------------------- """  
+        self.ProjShared=FusedGatedUnit(hidden_size,
+               hidden_size,in_channels)
+        
+        self.decoder=CNN_PuPMLA_VIT(
                    spatial_dims=spatial_dims,
-                   hidden_size=hidden_size*self.numModal,
+                   hidden_size=hidden_size,
                    num_modality=1,
                    features=filters_Encoder,
                    norm_name=norm_name,
@@ -182,26 +190,32 @@ class VITMultiple(nn.Module):
         """ ------------------------------------------------------------- """      
 
     def proj_feat(self, x, hidden_size, feat_size):
-        new_view = (x.size(0),*feat_size, hidden_size*self.numModal)
+        new_view = (x.size(0),*feat_size, (hidden_size))
         x = x.view(new_view)
         new_axes = (0, len(x.shape) - 1) + tuple(d + 1 for d in range(len(feat_size)))
         x = x.permute(new_axes).contiguous()
         return x
+    
+    def proj_featHidden(self, x, hidden_size, feat_size):
+        new_view = (x.size(0),*feat_size, (hidden_size)*self.numModal)
+        x = x.view(new_view)
+        new_axes = (0, len(x.shape) - 1) + tuple(d + 1 for d in range(len(feat_size)))
+        x = x.permute(new_axes).contiguous()
+        return x
+    
 
     def forward(self, x_in):
         x=list(torch.tensor_split(x_in, self.numModal,dim=1))
-        x, hidden_states_out = self.vit(x)
+        x, hidden_states_out = self.vit(x[0],x[1])
         enc1 = self.encoder1(x_in)
-        x2 = hidden_states_out[3]
-        enc2 = self.encoder2(self.proj_feat(x2, self.hidden_size, self.feat_size))
-        x3 = hidden_states_out[6]
-        enc3 = self.encoder3(self.proj_feat(x3, self.hidden_size, self.feat_size))
-        x4 = hidden_states_out[9]
-        enc4 = self.encoder4(self.proj_feat(x4, self.hidden_size, self.feat_size))
+        enc2 = self.encoder2(self.proj_featHidden(hidden_states_out[3], self.hidden_size, self.feat_size))
+        enc3 = self.encoder3(self.proj_featHidden(hidden_states_out[6], self.hidden_size, self.feat_size))
+        enc4 = self.encoder4(self.proj_featHidden(hidden_states_out[9], self.hidden_size, self.feat_size))
         skip_connections=[enc1,enc2,enc3,enc4]
         
-        decfinal = self.proj_feat(x, self.hidden_size, self.feat_size)
-        decfinal= self.UpsamplingConv(decfinal)
+        decfinal=self.ProjShared(x)
+        decfinal=self.proj_feat(decfinal, self.hidden_size, self.feat_size)
+        
         j=-1
         for numdec in range(self.numConvLevel):
             decfinal = self.decoder.decoderList[numdec](decfinal,skip_connections[j])#change to only concat

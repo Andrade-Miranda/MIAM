@@ -19,14 +19,18 @@ Created on Mon Jan 24 10:22:28 2022
 import torch
 import torch.nn as nn
 
-from monai.networks.blocks.dynunet_block import UnetOutBlock,get_conv_layer
+from monai.networks.blocks.dynunet_block import UnetOutBlock
 from monai.networks.blocks.unetr_block import UnetrBasicBlock, UnetrPrUpBlock
 from .ViT_StreamSM import ViT_S
 from monai.utils import ensure_tuple_rep
 from torch.nn import init
 from util.util import print_network
 
-from .decoder import CNN_PuPMLA
+from .decoder import CNN_PuPMLA_VIT
+import einops
+from util.block import FusedGatedUnit
+
+
 
 
 class VITSingle(nn.Module):
@@ -97,12 +101,13 @@ class VITSingle(nn.Module):
             patch_size=self.patch_size,
             hidden_size=hidden_size,
             mlp_dim=mlp_dim,
+            pos_embed=pos_embed,
             num_layers=self.num_layers,
             num_heads=num_heads,
-            pos_embed=pos_embed,
             classification=self.classification,
             dropout_rate=dropout_rate,
             spatial_dims=spatial_dims,
+            fusion=self.opt.Earlyfusion
         )
         """ ------------------------------------------------------------- """  
         
@@ -151,19 +156,14 @@ class VITSingle(nn.Module):
             conv_block=conv_block,
             res_block=res_block,
         )
-        """ -------------------CNN decoders------------------------------- """
-        self.UpsamplingConv=get_conv_layer(
-            spatial_dims=spatial_dims,
-            in_channels=hidden_size*self.numModal,
-            out_channels=hidden_size*self.numModal,
-            kernel_size=3,
-            stride=2,
-            conv_only=True,
-            is_transposed=True,
-            )
-        self.decoder=CNN_PuPMLA(
+        
+        """ ------------------------------------------------------------- """  
+        self.ProjShared=FusedGatedUnit(hidden_size,
+               hidden_size,in_channels)
+        
+        self.decoder=CNN_PuPMLA_VIT(
                    spatial_dims=spatial_dims,
-                   hidden_size=hidden_size*self.numModal,
+                   hidden_size=hidden_size,
                    num_modality=1,
                    features=filters_Encoder,
                    norm_name=norm_name,
@@ -171,22 +171,16 @@ class VITSingle(nn.Module):
                    )
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0], out_channels=out_channels)
         """ ------------------------------------------------------------- """      
-        
-    def Del_SepTOKEN(self,x):
-        xout=[]
-        prev=0
-        w,h,c=self.feat_size
-        siz=(w*h*c)
-        last=siz
-        for i in range(self.numModal):    
-            xout.append(x[:,prev:last,:])
-            prev=last+1
-            last=prev+siz
-        return torch.cat(xout,1)
-
 
     def proj_feat(self, x, hidden_size, feat_size):
-        new_view = (x.size(0),*feat_size, (hidden_size*self.numModal))
+        new_view = (x.size(0),*feat_size, (hidden_size))
+        x = x.view(new_view)
+        new_axes = (0, len(x.shape) - 1) + tuple(d + 1 for d in range(len(feat_size)))
+        x = x.permute(new_axes).contiguous()
+        return x
+    
+    def proj_featHidden(self, x, hidden_size, feat_size):
+        new_view = (x.size(0),*feat_size, (hidden_size)*self.numModal)
         x = x.view(new_view)
         new_axes = (0, len(x.shape) - 1) + tuple(d + 1 for d in range(len(feat_size)))
         x = x.permute(new_axes).contiguous()
@@ -199,16 +193,15 @@ class VITSingle(nn.Module):
         x=list(torch.tensor_split(x_in, self.numModal,dim=1))
         x, hidden_states_out = self.vit(x)
         enc1 = self.encoder1(x_in)
-        x2 = self.Del_SepTOKEN(hidden_states_out[3])
-        enc2 = self.encoder2(self.proj_feat(x2, self.hidden_size, self.feat_size))
-        x3 = self.Del_SepTOKEN(hidden_states_out[6])
-        enc3 = self.encoder3(self.proj_feat(x3, self.hidden_size, self.feat_size))
-        x4 = self.Del_SepTOKEN(hidden_states_out[9])
-        enc4 = self.encoder4(self.proj_feat(x4, self.hidden_size, self.feat_size))
+        enc2 = self.encoder2(self.proj_featHidden(hidden_states_out[3], self.hidden_size, self.feat_size))
+        enc3 = self.encoder3(self.proj_featHidden(hidden_states_out[6], self.hidden_size, self.feat_size))
+        enc4 = self.encoder4(self.proj_featHidden(hidden_states_out[9], self.hidden_size, self.feat_size))
         skip_connections=[enc1,enc2,enc3,enc4]
         
-        decfinal = self.proj_feat(self.Del_SepTOKEN(x), self.hidden_size, self.feat_size)
-        decfinal= self.UpsamplingConv(decfinal)
+        x = einops.rearrange(x, "b (Np n) H -> b n Np H",n=self.numModal)
+        decfinal=self.ProjShared(x)
+        decfinal=self.proj_feat(decfinal, self.hidden_size, self.feat_size)
+        
         j=-1
         for numdec in range(self.numConvLevel):
             decfinal = self.decoder.decoderList[numdec](decfinal,skip_connections[j])#change to only concat

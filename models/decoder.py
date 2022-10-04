@@ -11,6 +11,7 @@ from monai.networks.blocks.unetr_block import UnetrUpBlock
 from typing import Sequence, Tuple, Union
 from .EncoderConvNeXt import LayerNorm
 from timm.models.layers import DropPath
+from util.block import UPResBlock
 
 #from monai.networks.nets.vit import ViT
 
@@ -59,6 +60,115 @@ class CNN_PuPMLA(nn.ModuleList):
             y.append(x)
         return y  
     
+
+class CNN_PuPMLA_VIT(nn.ModuleList):
+
+    def __init__(
+       self,
+       spatial_dims,
+       hidden_size,
+       num_modality,
+       features,
+       norm_name,
+       res_block,
+       conv_block=True
+    ):
+        super(CNN_PuPMLA_VIT,self).__init__()
+        self.decoderList=nn.ModuleList()
+        
+        for i in range(len(features)):
+            if i==0:
+                decoder = UnetrUpBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=hidden_size,# first correspond to the hidden_size coming from transformer
+                    out_channels=features[-1] * num_modality,# last feature kernel
+                    kernel_size=3,
+                    upsample_kernel_size=2,#upsample kernel is 2 always in UNETR
+                    norm_name=norm_name,
+                    res_block=res_block,
+                    )
+            else:
+                decoder = UnetrUpBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=features[-i] * num_modality,
+                    out_channels=features[-i-1] * num_modality,
+                    kernel_size=3,
+                    upsample_kernel_size=2,
+                    norm_name=norm_name,
+                    res_block=res_block,
+                    )
+            self.decoderList.append(decoder)
+            
+    def forward(self, x):
+        y=[]
+        for j in range(len(self.decoderList)):
+            x = self.decoderList[j](x)
+            y.append(x)
+        return y  
+
+
+
+
+
+###########BASELINE############################################################
+class SiameseDecoder(nn.ModuleList):
+
+    def __init__(
+            self,
+            num_modalities,
+            spatial_dims,
+            features,
+            norm_name,
+            kernel_sizes,
+            stride
+               ):
+        self.num_modalities=num_modalities
+        super(SiameseDecoder,self).__init__()
+        self.decoderList=nn.ModuleList()
+        for i in range(len(features)-1):
+            decoder= UPResBlock(num_modalities=num_modalities,
+                                spatial_dims= spatial_dims,
+                                in_channels=features[-i-1],
+                                out_channels=features[-i-2],
+                                kernel_size=tuple(kernel_sizes[-i-2]),
+                                stride=stride[-i-1],
+                                norm_name=norm_name
+                                      )
+            self.decoderList.append(decoder)
+
+
+    def forward_once(self,x,modal):
+        
+        x1=x[-1].clone()
+        for j in range(len(self.decoderList)):
+            x1 = self.decoderList[j](x1,x[-j-2],modal)
+            self.y.append(x1)
+        return self.y      
+    
+    def forward(self, input,modal):
+        # In this function we pass in both images and obtain both vectors
+        # which are returned
+        out=[]
+        for imag,i in zip(input,modal):
+            self.y=[]
+            out.append(self.forward_once(imag,i))
+        
+        return out
+###########BASELINE############################################################
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
