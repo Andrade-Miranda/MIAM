@@ -251,14 +251,14 @@ class Swinfuse(nn.Module):# use Resnet34+swin small
         x_c_2 = self.up_c_2_2(x_c_1, x_c_2_1) # joint predict low supervise here
 
         # decoder part
-        # map_x = F.interpolate(self.final_x(x_c), scale_factor=16, mode='trilinear',align_corners=True)
-        # map_1 = F.interpolate(self.final_1(x_b_2), scale_factor=4, mode='trilinear',align_corners=True)
+        #map_x = F.interpolate(self.final_x(x_c), scale_factor=16, mode='trilinear',align_corners=True)
+        #map_1 = F.interpolate(self.final_1(x_b_2), scale_factor=4, mode='trilinear',align_corners=True)
         map_2 = F.interpolate(self.final_2(x_c_2), scale_factor=4, mode='trilinear',align_corners=True)
-        return map_2 #map_x, map_1, map_2
+        return map_2#map_x, map_1, map_2
     
     
     def name(self):
-            return 'SwinFuse: ' + self.Swinname + ' || ResNet34'
+            return 'SwinFuse: ' + self.Swinname + ' || ResNet50'
         
 
     def init_net(self,model):

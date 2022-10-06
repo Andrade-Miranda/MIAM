@@ -25,7 +25,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from monai.networks.layers import Conv,trunc_normal_
+from monai.networks.layers import Conv
 from monai.utils import ensure_tuple_rep, optional_import
 from monai.utils.module import look_up_option
 from monai.networks.blocks.dynunet_block import get_conv_layer,get_act_layer,get_norm_layer
@@ -131,22 +131,38 @@ class PatchModalEmbBlock(nn.Module):
                 nn.Linear(self.patch_dim, hidden_size),
             )
         self.position_embeddings = nn.Parameter(torch.zeros(1, self.n_patches, hidden_size))
-        self.segment_Embedding=nn.Parameter(torch.ones(1, self.n_patches, hidden_size))*modality
+        self.segment_Embedding=nn.Parameter(torch.full((1, self.n_patches, hidden_size),float(modality)))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
         
         self.dropout = nn.Dropout(dropout_rate)
-        trunc_normal_(self.position_embeddings, mean=0.0, std=0.02, a=-2.0, b=2.0)
-        trunc_normal_(self.segment_Embedding, mean=0.0, std=0.02, a=-2.0, b=2.0)
+        self.trunc_normal_(self.position_embeddings, mean=0.0, std=0.02, a=-2.0, b=2.0)
+        self.trunc_normal_(self.segment_Embedding, mean=0.0, std=0.02, a=-2.0, b=2.0)
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, mean=0.0, std=0.02, a=-2.0, b=2.0)
+            self.trunc_normal_(m.weight, mean=0.0, std=0.02, a=-2.0, b=2.0)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
+            
+    def trunc_normal_(self, tensor, mean, std, a, b):
+        # From PyTorch official master until it's in a few official releases - RW
+        # Method based on https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf
+        def norm_cdf(x):
+            return (1.0 + math.erf(x / math.sqrt(2.0))) / 2.0
+
+        with torch.no_grad():
+            l = norm_cdf((a - mean) / std)
+            u = norm_cdf((b - mean) / std)
+            tensor.uniform_(2 * l - 1, 2 * u - 1)
+            tensor.erfinv_()
+            tensor.mul_(std * math.sqrt(2.0))
+            tensor.add_(mean)
+            tensor.clamp_(min=a, max=b)
+            return tensor
 
     def forward(self, x):
         if self.pos_embed == "conv" :
@@ -164,7 +180,6 @@ class PatchModalEmbBlock(nn.Module):
             x= x.flatten(2).transpose(-1, -2)
         else:
             x=self.patch_embeddings(x)     
-        
         embeddings = x + self.position_embeddings+self.segment_Embedding
         embeddings = self.dropout(embeddings)
         return embeddings

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+##!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Thu Oct 21 11:40:28 2021
@@ -8,7 +8,7 @@ Created on Thu Oct 21 11:40:28 2021
 import torch
 from monai.losses import DiceCELoss
 from monai.inferers import sliding_window_inference
-from monai.metrics import DiceMetric,ConfusionMatrixMetric
+from monai.metrics import DiceMetric,ConfusionMatrixMetric,HausdorffDistanceMetric,SurfaceDistanceMetric
 from monai.optimizers import Novograd
 from torch.nn.modules.loss import _Loss
 
@@ -30,39 +30,30 @@ class BaseConfig():
 
     def LoadConfig(self):
         
-        self.optimizer = Novograd(self.model.parameters(), lr=self.opt.lr, weight_decay=self.opt.weight_decay)
-        self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.opt.epochs)
+        self.optimizer = Novograd(self.model.parameters(), lr=self.opt.lr)#torch.optim.AdamW(self.model.parameters(), lr=self.opt.lr, weight_decay=1e-5)
+        self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=int(self.opt.epochs*0.2),eta_min=1e-5)
         self.scaler = torch.cuda.amp.GradScaler()
         self.post_trans = Compose(
                 [Activations(sigmoid=True), AsDiscrete(threshold_values=True)]
             )
-        self.dice_metric = DiceMetric(include_background=True, reduction="mean")
-        self.dice_EMAmetric = DiceMetric(include_background=True, reduction="mean")
-
-        self.Recall_Precision=ConfusionMatrixMetric(include_background=True,metric_name=('sensitivity','precision'),reduction="mean")
         
-        if self.opt.encoder=='Transfuse' or self.opt.encoder=='Swinfuse':
-            self.loss_function=TransfuseDiceCELoss()
-        else:
-            self.loss_function = DiceCELoss(smooth_nr=0, smooth_dr=1e-5, squared_pred=True, to_onehot_y=False, sigmoid=True)
+        #metrics
+        self.dice_metric = DiceMetric(include_background=True, reduction="mean")
+        self.Recall_Precision=ConfusionMatrixMetric(include_background=True,metric_name=('recall','precision'),reduction="mean",compute_sample=True)
+        self.HausdorffDis=HausdorffDistanceMetric(include_background=True, distance_metric='euclidean', percentile=95, directed=False, reduction="mean")
+        self.SurfDis=SurfaceDistanceMetric(include_background=True, symmetric=False, distance_metric='euclidean', reduction="mean")
+        
+        self.loss_function = DiceCELoss(smooth_nr=0, smooth_dr=1e-5, squared_pred=False, to_onehot_y=False, sigmoid=True)
 
         
 
     # define inference method
     def inference(self,input):
         def _compute(input):
-            if self.opt.encoder!='Transfuse' or self.opt.encoder=='Swinfuse':
-                return sliding_window_inference(
+         
+            return sliding_window_inference(
                     inputs=input,
-                    roi_size=(128, 128, 128),
-                    sw_batch_size=self.opt.Val_batchSize,
-                    predictor=self.model,
-                    overlap=0.5,
-                    )
-            else:
-                return Multi_sliding_window_inference(
-                    inputs=input,
-                    roi_size=(128, 128, 128),
+                    roi_size=self.opt.imageSize,
                     sw_batch_size=self.opt.Val_batchSize,
                     predictor=self.model,
                     overlap=0.5,
@@ -75,7 +66,7 @@ class BaseConfig():
             return _compute(input)
 
     def name(self):
-        return "Baseconfig"
+        return "BaseTrainconfig"
 
 
 

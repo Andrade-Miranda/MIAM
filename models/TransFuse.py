@@ -235,11 +235,11 @@ class TransFuse_S(nn.Module):# use Resnet34+ViTsmall
         #map_x = F.interpolate(self.final_x(x_c), scale_factor=16, mode='trilinear')
         #map_1 = F.interpolate(self.final_1(x_b_2), scale_factor=4, mode='trilinear')
         map_2 = F.interpolate(self.final_2(x_c_2), scale_factor=4, mode='trilinear')
-        return map_2 #map_x, map_1, map_2
+        return map_2#map_x, map_1, map_2
     
     
     def name(self):
-            return 'TransFuse: Paralell ViT small || ResNet34'
+            return 'TransFuse: Paralell ViT base || ResNet50'
         
 
     def init_net(self,model):
