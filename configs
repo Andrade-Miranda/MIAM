@@ -1,6 +1,5 @@
 ###HEKTOR splits_final_byTypeofcenter -> cada center en val
 
-
 #SwinTrans3D
 --dataroot Task002_Hektor --output_dir ./Output/5fold --encoder SwinTrans3D --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseTrainConfig --patchSize 2 --batchSize 2 --epochs 5 --gpu_ids -1 --hidden_size 48 --lr 1e-3 --fold 51 --region None --input_nc 2 --output_nc 1  --loadsplit Hektor_5fold.pkl
 
@@ -18,6 +17,18 @@
 
 #nnformer
 --dataroot Task002_Hektor --output_dir ./Output/ --encoder nnFormer --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseTrainConfig  --VAL_AMP --lr 1e-3 --fold 0 --region None --input_nc 2 --output_nc 1  --loadsplit splits_final_byTypeofcenter.pkl --hybrid
+
+
+##Brats
+#MCNN_h+VIT_s
+--dataroot Task001_BraTS2021 --output_dir ./Output/ --encoder MCNN_h+VIT_n --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 1 --batchSize 2 --epochs 5 --gpu_ids -1 --hidden_size 512 --num_layers 8 --mlp_dim 2048 --num_heads 8  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 1e-3 --fold 0 --input_nc 4 --output_nc 3  --loadsplit  splits_finalBrats.pkl --hybrid --Val_batchSize 2
+
+
+
+
+
+
+
 
 
 #VIT_sT1T2

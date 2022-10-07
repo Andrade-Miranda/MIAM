@@ -426,24 +426,30 @@ class VisualPlots():
         plt.show()
         plt.savefig(os.path.join(self.opt.out_dir,'PartialResults_'+str(slices)+'_'+str(epoch)+'.pdf'))                
             
-    def save_Loss_Metrics(self, epoch_loss_values,val_loss_values, metric_values, best_metric_epoch,best_metric,metric_values_tc,metric_values_wt,metric_values_et,val_interval):
+    def save_Loss_Metrics(self, epoch_loss_values,val_loss_values, metric_values_tumor, best_metric_epoch,best_metric,metric_values_tc,metric_values_wt,metric_values_et,val_interval):
         
-        plt.figure("train", (12, 6))
+        plt.figure("Loss and Dice", (12, 6))
         plt.subplot(1, 2, 1)
-        plt.title("Epoch Average Loss")
+        plt.title("Epoch Average Train and val Loss")
         x = [i + 1 for i in range(len(epoch_loss_values))]
         y = epoch_loss_values
+        z = val_loss_values
         plt.xlabel("epoch")
-        plt.plot(x, y, color="red")
-        
+        plt.ylabel("loss")
+        plt.plot(x, y, color="red",label='train')
+        plt.plot(x, z, color="blue",label='val')
+        plt.yticks(np.arange(0, 1, step=0.1))  # Set label locations.
         plt.subplot(1, 2, 2)
         plt.title("Val Mean Dice")
-        x = [val_interval * (i + 1) for i in range(len(metric_values))]
-        y = metric_values
+        x = [val_interval * (i + 1) for i in range(len(metric_values_tumor))]
+        y = metric_values_tumor
         plt.xlabel("epoch")
+        plt.ylabel("Dice")
         plt.plot(x, y, color="green")
+        plt.yticks(np.arange(0, 1, step=0.1))  # Set label locations.
         plt.show()
-        plt.savefig(os.path.join(self.opt.out_dir,str(best_metric_epoch)+'_'+str(best_metric)+'_LossVsVal.pdf'))
+        #plt.savefig(os.path.join(self.opt.out_dir,str(best_metric_epoch)+'_'+str(best_metric)+'_LossVsDice.pdf'))
+        plt.savefig(os.path.join(self.opt.out_dir,'LossVsDice.pdf'))
 
 
         plt.figure("train", (18, 6))
@@ -466,7 +472,9 @@ class VisualPlots():
         plt.xlabel("epoch")
         plt.plot(x, y, color="purple")
         plt.show()
-        plt.savefig(os.path.join(self.opt.out_dir,str(best_metric_epoch)+'_'+str(best_metric)+'_TC-WT-ET_.pdf'))
+        #plt.savefig(os.path.join(self.opt.out_dir,str(best_metric_epoch)+'_'+str(best_metric)+'_TC-WT-ET_.pdf'))
+        plt.savefig(os.path.join(self.opt.out_dir,'TC-WT-ET_.pdf'))
+
         
     def save_Loss_MetricsHektor(self, epoch_loss_values,val_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor,HDistance, AVgSurfDis, val_interval):
         
