@@ -304,8 +304,10 @@ class nnUNetDataset(BaseDataset):
                 splits_file=os.path.join('./splits_plk', self.opt.loadsplit) #splits_final.pkl    
                 print("Loading split...:%s" % splits_file)
                 ##### temporary solution for create a new custom pkl split
-                # from util.split_fnct import HEKTOR_splitprogressive2
-                # splits=HEKTOR_splitprogressive2(all_keys_sorted,5)
+                # from util.split_fnct import Brats_splitprogressive2
+                # splits=Brats_splitprogressive2(all_keys_sorted,5)
+                # with open(splits_file, "wb") as fout:
+                #     pickle.dump(splits, fout, protocol=-1)
             else:
                 print("Creating new split...")
                 kfold = KFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
