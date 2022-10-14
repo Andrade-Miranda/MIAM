@@ -306,7 +306,7 @@ class nnUNetDataset(BaseDataset):
                 ##### temporary solution for create a new custom pkl split
                 # from util.split_fnct import Brats_splitprogressive2
                 # splits=Brats_splitprogressive2(all_keys_sorted,5)
-                # with open(splits_file, "wb") as fout:
+                # with open('./splits_plk/lowDataRegime_Brats.pkl', "wb") as fout:
                 #     pickle.dump(splits, fout, protocol=-1)
             else:
                 print("Creating new split...")
