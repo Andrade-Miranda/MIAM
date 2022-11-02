@@ -19,6 +19,7 @@
 --dataroot Task002_Hektor --output_dir ./Output/ --encoder nnFormer --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseTrainConfig  --VAL_AMP --lr 1e-3 --fold 0 --region None --input_nc 2 --output_nc 1  --loadsplit splits_final_byTypeofcenter.pkl --hybrid
 
 
+
 ##Brats
 #MCNN_h+VIT_s
 --dataroot Task001_BraTS2021 --output_dir ./Output/ --encoder MCNN_h+VIT_n --yh_run_model Train --dataset_mode nnUNet --TrainConfig BaseConfig --patchSize 1 --batchSize 2 --epochs 5 --gpu_ids -1 --hidden_size 512 --num_layers 8 --mlp_dim 2048 --num_heads 8  --VAL_AMP --filters_Encoder 16 32 64 128 --lr 1e-3 --fold 0 --input_nc 4 --output_nc 3  --loadsplit  splits_finalBrats.pkl --hybrid --Val_batchSize 2
@@ -27,6 +28,10 @@
 
 
 
+
+
+##prediction
+--input_folder ./nnUNet/data/nnUnet_raw/nnUNet_raw_data --output_folder /home/gustavo/Data/results/Hektor2021/predictions/FinalResults --task_name Task003_Hektor --model CNN_h+VIT_n  --mode MeanEnsemb --chkname lastCHK.pth --chkdir /home/gustavo/Data/results/Hektor2021/checkpoints/multicenter/second_trial --folds 0 1 2 3 4
 
 
 

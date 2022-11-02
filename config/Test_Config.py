@@ -33,6 +33,7 @@ class TestConfig():
         
         if self.opt.dataset_mode=='MeanEnsemb':
             self.post_trans = Activations(sigmoid=True)
+            self.postLast=AsDiscrete(threshold_values=True)
         else:
             self.post_trans = Compose(
                 [Activations(sigmoid=True), AsDiscrete(threshold_values=True)]

@@ -17,7 +17,7 @@ import argparse
 from batchgenerators.utilities.file_and_folder_operations import join
 
 
-from util.testing_setup import load_trainingSetup,Mode_NCrossval,Mode_MeanEnsemb,Test_time_Augmentation
+from util.testing_setup import load_trainingSetup,Mode_NCrossval,Mode_MeanEnsemb
 
 
 
@@ -63,20 +63,19 @@ def main():
     mode=args.mode
     
     modelname=[args.model+'F'+str(args.folds[i]) for i in range(len(args.folds))]
-    output_folder = [join('./Output',args.output_folder,model,modelname[i]) for i in range(len(args.folds))]
     chk_folder = [join(args.chkdir,model,modelname[i]) for i in range(len(args.folds))]
-    args.output_dir=output_folder
     args.checkpoints_dir=chk_folder
     args.folds=[int(args.folds[i]) for i in range(len(args.folds))]
+    if mode=='Nfold':
+        output_folder = [join('./Output',args.output_folder,model,modelname[i]) for i in range(len(args.folds))]
+    else:
+        output_folder=join('./Output',args.output_folder,model+'_Ensemble')
+    args.output_dir=output_folder
 
     opt= [load_trainingSetup(join(chk_folder[i],'opt.txt'),args,i) for i in range(len(args.folds))]
     [print("using model stored in ", chk_folder[i]) for i in range(len(args.folds))]
    
     
-    assert model in ['CNN_h+VIT_n','CNN_l+VIT_n','MCNN_h+VIT_n','MCNN_h+VIT_s','MCNN_h+VIT_m','Unet','MCNN_l+VIT_s','MCNN_l+VIT_m',
-                   'VIT_n','VIT_s','VIT_m','MVIT_n','MVIT_s','MVIT_m','CNN+VIT2Stream','SegResNetVAE','SegResNet','UNETR','SwinTrans3D']
- 
-
     if mode=='Nfold':
         Mode_NCrossval(args,opt,output_folder)
     elif mode=='MeanEnsemb':

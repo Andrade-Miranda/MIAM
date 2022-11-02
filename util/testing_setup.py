@@ -33,6 +33,11 @@ from monai.transforms import (
 )
 
 
+import SimpleITK as sitk
+from nnUNet.nnunet.preprocessing.preprocessing import get_lowres_axis, get_do_separate_z, resample_data_or_seg
+from batchgenerators.utilities.file_and_folder_operations import *
+
+
 
 def predict_from_folder(opt=None):
     """
@@ -65,10 +70,10 @@ def predict_from_folder(opt=None):
 def restore_Model(file,opt):
     
     model = create_model(opt)
-    pkl_file=file
+    checkpoint = torch.load(file,map_location=opt.device)
     model.load_state_dict(
-    torch.load(pkl_file,map_location=opt.device)
-    )
+    checkpoint['model_state_dict'],strict=False)
+    print("Replace Default initialization... LOAD TRAINED WEIGHTS")
     return model
 
 def load_trainingSetup(file_name,args,numiter):
@@ -88,16 +93,32 @@ def load_trainingSetup(file_name,args,numiter):
             elif key=='dataroot':
                 value=args.task_name
             elif key=='output_dir':
-                value=args.output_dir[numiter]
+                if args.mode=='MeanEnsemb':
+                    value=args.output_dir
+                else:
+                    value=args.output_dir[numiter]
             elif key=='checkpoints_dir':
                 value=args.checkpoints_dir[numiter]
+            elif key=='isTrain':
+                value=False
             elif key=="device":
                 if not args.GPU:
                    value='cpu'
             elif key=='dataset_mode':
                 value=args.mode
+            elif key=='yh_run_model':
+                value='test'
             elif key=='TrainConfig':
                 value='TestConfig'
+            elif key=='conv_kernel_sizes':
+                newValue=value.translate({ord(i): None for i in '[,] '})
+                value= [(list(map(int,newValue[x:x+3]))) for x in range(0, len(newValue), 3)]
+            elif key=='pool_op_kernel_sizes':
+                newValue=value.translate({ord(i): None for i in '[,] '})
+                value= [(list(map(int,newValue[x:x+3]))) for x in range(0, len(newValue), 3)]
+            elif key=='num_pool_per_axis':
+                newValue=value.translate({ord(i): None for i in '[,] '})                
+                value= [int(x) for x in newValue]    
             elif value[0].isnumeric() and len(value)>1:
                 if value[1]=='.':
                     value=float(value)
@@ -184,7 +205,7 @@ def Mode_NCrossval(args,opt,output_folder):
         results=[]
         model.eval()
         with torch.no_grad():#Context-manager that disabled gradient calculation.
-            for batchIt in range(80):#range(len(data_loader)):
+            for batchIt in range(len(data_loader)):
                 val_data = next(test_loader)
                 val_inputs,val_labels= (
                          val_data["image"].to(opt[i].device),
@@ -254,145 +275,171 @@ def Mode_NCrossval(args,opt,output_folder):
         savePredictions(output_folder[i],results)
         results=[]                
 
+
 def Mode_MeanEnsemb(args,opt):
-    LastTransf=AsDiscrete(threshold_values=True)
-    output_folder = join('./Output',args.output_folder,opt[0].encoder+'_Ensemble')
+    output_folder = args.output_dir
+    maybe_mkdir_p(output_folder)
     data_loader = CreateDataLoader(opt[args.folds[0]])
     test_loader = data_loader.load_test()#as is the same model use same pre-processing
     models=[predict_from_folder(opt[i]).eval() for i in range(len(args.folds))]
-    testConfig=[TrainSetup(opt[args.folds[i]],models[i]) for i in range(len(args.folds))]
-    metric_values = []
-    metric_values_tc = []
-    metric_values_wt = []
-    metric_values_et = []
-    results=[]
-    val_outStack=[]
+    testConfig=[TrainSetup(opt[i],models[i]) for i in range(len(args.folds))]
     with torch.no_grad():#Context-manager that disabled gradient calculation.
         for batchIt in range(len(data_loader)):
             val_data = next(test_loader)
-            val_inputs,val_labels= (
+            val_inputs,properties_dict= (
                         val_data["image"].to(opt[0].device),
-                        val_data["label"].to(opt[0].device))
+                        val_data["properties"])
             val_outputs = [testConfig[i].Config.inference(val_inputs) for i in range(len(args.folds))]
+            val_outStack=[]
             for j in range(len(val_outputs)):
                 val_outStack.append([testConfig[j].Config.post_trans(i) for i in decollate_batch(val_outputs[j])][0])
-            val_outputs = LastTransf(torch.stack(val_outStack, dim=0).mean(dim=0))[None,:]
-            testConfig[0].Config.dice_metric(y_pred=val_outputs, y=val_labels)
-            testConfig[0].Config.dice_metric_batch(y_pred=val_outputs, y=val_labels)
-                                
-            metric = testConfig[0].Config.dice_metric.aggregate().item()
-            metric_values.append(metric)
-            metric_batch = testConfig[0].Config.dice_metric_batch.aggregate()
-            metric_tc = metric_batch[0].item()
-            metric_values_tc.append(metric_tc)
-            metric_wt = metric_batch[1].item()
-            metric_values_wt.append(metric_wt)
-            metric_et = metric_batch[2].item()
-            metric_values_et.append(metric_et)
-            testConfig[0].Config.dice_metric.reset()
-            testConfig[0].Config.dice_metric_batch.reset()       
-            val_outStack=[]
-            ####LABEL predictions
-            maybe_mkdir_p(output_folder)
-            label=np.moveaxis(val_outputs[0].cpu().detach().numpy(),(0,1,2),(-1,-2,-3))
-            labelMC=np.zeros((label.shape[0],label.shape[1],label.shape[2]))
-            for j in [1,0,2]:
-                labelMC[label[:,:,:,j]==1]=j+1 
-            new_label = nib.Nifti1Image(labelMC, affine=np.eye(4))
-            new_label.header.get_xyzt_units()
-            new_label.to_filename(join(output_folder,val_data['keys'][0]+'_labelPred'+'.nii.gz'))  
-            print(
-                    f"Patients: {val_data['keys'][0]} "
-                    f"current mean dice: {metric:.4f}"
-                    f" tc: {metric_tc:.4f} wt: {metric_wt:.4f} et: {metric_et:.4f}"
-                    ,flush=True
-                )
-            results.append((val_data['keys'][0],metric,metric_tc,metric_wt,metric_et))
-        results.sort()
-    savePredictions(output_folder,results)
-        
-def Test_time_Augmentation(opt,fold=0):
-    output_folder = opt[fold].output_dir+'_TTA'
-    data_loader = CreateDataLoader(opt[fold])
-    test_loader = data_loader.load_test()#as is the same model use same pre-processing
-    model=predict_from_folder(opt[fold]).eval()
-    testConfig=TrainSetup(opt[fold],model) 
-    metric_values = []
-    metric_values_tc = []
-    metric_values_wt = []
-    metric_values_et = []
-    results=[]
-    
-    tt_aug = TestTimeAugmentation(
-                    transformations(),
-                    batch_size=opt[fold].Val_batchSize,
-                    num_workers=0,
-                    inferrer_fn=partial(infer_seg,models=model,opt=opt,fold=fold,testConfig=testConfig),  # fn to infer segmentation
-                    device=opt[fold].device
-                    )
-
-    with torch.no_grad():#Context-manager that disabled gradient calculation.
-        for batchIt in range(len(data_loader)):
-            val_data = next(test_loader)
-            val_inputs={'image': val_data["image"],
-                        'label': val_data["label"]}
+            val_outputs = testConfig[0].Config.postLast(torch.stack(val_outStack, dim=0).mean(dim=0))
+          
+            out_fname=join(output_folder,val_data['keys'][0]+'.nii.gz')
+            save_segmentation_nifti_from_softmax(val_outputs, out_fname,
+                                         properties_dict, order=1,
+                                         region_class_order= None,
+                                         seg_postprogess_fn= None, seg_postprocess_args= None,
+                                         resampled_npz_fname= None,
+                                         non_postprocessed_fname= None, force_separate_z= None,
+                                         interpolation_order_z= 0, verbose= True)
+           
+            del val_outputs
+            del val_data
+            torch.cuda.empty_cache()
             
 
-            mode_tta, mean_tta, std_tta, vvc_tta = tt_aug(val_inputs, num_examples=5)
-            
-            val_outputs=mean_tta
-            testConfig.Config.dice_metric(y_pred=val_outputs, y=val_inputs['label'])
-            testConfig.Config.dice_metric_batch(y_pred=val_outputs, y=val_inputs['label'])
-                                
-            metric = testConfig.Config.dice_metric.aggregate().item()
-            metric_values.append(metric)
-            metric_batch = testConfig.Config.dice_metric_batch.aggregate()
-            metric_tc = metric_batch[0].item()
-            metric_values_tc.append(metric_tc)
-            metric_wt = metric_batch[1].item()
-            metric_values_wt.append(metric_wt)
-            metric_et = metric_batch[2].item()
-            metric_values_et.append(metric_et)
-            testConfig.Config.dice_metric.reset()
-            testConfig.Config.dice_metric_batch.reset()       
-        
-            ####LABEL predictions
-            maybe_mkdir_p(output_folder)
-            label=np.moveaxis(val_outputs[0].cpu().detach().numpy(),(0,1,2),(-1,-2,-3))
-            labelMC=np.zeros((label.shape[0],label.shape[1],label.shape[2]))
-            for j in [1,0,2]:
-                labelMC[label[:,:,:,j]==1]=j+1 
-            new_label = nib.Nifti1Image(labelMC, affine=np.eye(4))
-            new_label.header.get_xyzt_units()
-            new_label.to_filename(join(output_folder,val_data['keys'][0]+'_labelPred'+'.nii.gz'))  
-            print(
-                    f"Patients: {val_data['keys'][0]} "
-                    f"current mean dice: {metric:.4f}"
-                    f" tc: {metric_tc:.4f} wt: {metric_wt:.4f} et: {metric_et:.4f}"
-                    ,flush=True
-                )
-            results.append((val_data['keys'][0],metric,metric_tc,metric_wt,metric_et))
-        results.sort()
-    savePredictions(output_folder,results)    
-    
+def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
+                                         properties_dict, order=1,
+                                         region_class_order= None,
+                                         seg_postprogess_fn= None, seg_postprocess_args= None,
+                                         resampled_npz_fname= None,
+                                         non_postprocessed_fname= None, force_separate_z= None,
+                                         interpolation_order_z= 0, verbose= True):
+    """
+    This is a utility for writing segmentations to nifto and npz. It requires the data to have been preprocessed by
+    GenericPreprocessor because it depends on the property dictionary output (dct) to know the geometry of the original
+    data. segmentation_softmax does not have to have the same size in pixels as the original data, it will be
+    resampled to match that. This is generally useful because the spacings our networks operate on are most of the time
+    not the native spacings of the image data.
+    If seg_postprogess_fn is not None then seg_postprogess_fnseg_postprogess_fn(segmentation, *seg_postprocess_args)
+    will be called before nifto export
+    There is a problem with python process communication that prevents us from communicating obejcts
+    larger than 2 GB between processes (basically when the length of the pickle string that will be sent is
+    communicated by the multiprocessing.Pipe object then the placeholder (\%i I think) does not allow for long
+    enough strings (lol). This could be fixed by changing i to l (for long) but that would require manually
+    patching system python code.) We circumvent that problem here by saving softmax_pred to a npy file that will
+    then be read (and finally deleted) by the Process. save_segmentation_nifti_from_softmax can take either
+    filename or np.ndarray for segmentation_softmax and will handle this automatically
+    :param segmentation_softmax:
+    :param out_fname:
+    :param properties_dict:
+    :param order:
+    :param region_class_order:
+    :param seg_postprogess_fn:
+    :param seg_postprocess_args:
+    :param resampled_npz_fname:
+    :param non_postprocessed_fname:
+    :param force_separate_z: if None then we dynamically decide how to resample along z, if True/False then always
+    /never resample along z separately. Do not touch unless you know what you are doing
+    :param interpolation_order_z: if separate z resampling is done then this is the order for resampling in z
+    :param verbose:
+    :return:
+    """
+    if verbose: print("force_separate_z:", force_separate_z, "interpolation order:", order)
 
-def savePredictions(output_folder,results):
-    file_name = os.path.join(output_folder, 'predictions.txt')
-    with open(file_name, 'wt') as pred_file:
-        pred_file.write('------------ Options -------------\n')
-        for patients,dice,SurfDis,HD,recall,precision in results:
-            if patients!="Average":
-                pred_file.write(f"Patients: {patients} "
-                                f"DICE: {dice:.5f}"
-                                f" ASD: {SurfDis:.5f} HD: {HD:.4f} Recall: {recall:.5f} Precision: {precision:.5f} \n")
+    if isinstance(segmentation_softmax, str):
+        assert isfile(segmentation_softmax), "If isinstance(segmentation_softmax, str) then " \
+                                             "isfile(segmentation_softmax) must be True"
+        del_file = deepcopy(segmentation_softmax)
+        segmentation_softmax = np.load(segmentation_softmax)
+        os.remove(del_file)
+
+    # first resample, then put result into bbox of cropping, then save
+    current_shape = segmentation_softmax.shape
+    shape_original_after_cropping = properties_dict[0].get('size_after_cropping')
+    shape_original_before_cropping = properties_dict[0].get('original_size_of_raw_data')
+    # current_spacing = dct.get('spacing_after_resampling')
+    # original_spacing = dct.get('original_spacing')
+
+    if np.any([i != j for i, j in zip(np.array(current_shape[1:]), np.array(shape_original_after_cropping))]):
+        if force_separate_z is None:
+            if get_do_separate_z(properties_dict[0].get('original_spacing')):
+                do_separate_z = True
+                lowres_axis = get_lowres_axis(properties_dict[0].get('original_spacing'))
+            elif get_do_separate_z(properties_dict[0].get('spacing_after_resampling')):
+                do_separate_z = True
+                lowres_axis = get_lowres_axis(properties_dict[0].get('spacing_after_resampling'))
             else:
-                pred_file.write(f"Metrics {patients}: "
-                                f"DICE: {dice[0]:.5f}"u"\u00B1"f"{dice[1]:.5f} "
-                                f"ASD: {SurfDis[0]:.5f}"u"\u00B1"f"{SurfDis[1]:.5f} "
-                                f"HD: {HD[0]:.5f}"u"\u00B1"f"{HD[1]:.5f} "
-                                f"Recall: {recall[0]:.5f}"u"\u00B1"f"{recall[1]:.5f} "
-                                f"Precision: {precision[0]:.5f}"u"\u00B1"f"{precision[1]:.5f} \n")
-        pred_file.write('-------------- End ----------------\n')
+                do_separate_z = False
+                lowres_axis = None
+        else:
+            do_separate_z = force_separate_z
+            if do_separate_z:
+                lowres_axis = get_lowres_axis(properties_dict[0].get('original_spacing'))
+            else:
+                lowres_axis = None
+
+        if lowres_axis is not None and len(lowres_axis) != 1:
+            # this happens for spacings like (0.24, 1.25, 1.25) for example. In that case we do not want to resample
+            # separately in the out of plane axis
+            do_separate_z = False
+
+        if verbose: print("separate z:", do_separate_z, "lowres axis", lowres_axis)
+        seg_old_spacing = resample_data_or_seg(segmentation_softmax.detach().cpu().numpy(), shape_original_after_cropping, is_seg=True,
+                                               axis=lowres_axis, order=order, do_separate_z=do_separate_z,
+                                               order_z=interpolation_order_z)
+        # seg_old_spacing = resize_softmax_output(segmentation_softmax, shape_original_after_cropping, order=order)
+    else:
+        if verbose: print("no resampling necessary")
+        seg_old_spacing = segmentation_softmax
+
+    if resampled_npz_fname is not None:
+        np.savez_compressed(resampled_npz_fname, softmax=seg_old_spacing.astype(np.float16))
+        # this is needed for ensembling if the nonlinearity is sigmoid
+        if region_class_order is not None:
+            properties_dict['regions_class_order'] = region_class_order
+        save_pickle(properties_dict, resampled_npz_fname[:-4] + ".pkl")
+
+    if region_class_order is None:
+        seg_old_spacing = seg_old_spacing[0]# i did ya argmax
+    else:
+        seg_old_spacing_final = np.zeros(seg_old_spacing.shape[1:])
+        for i, c in enumerate(region_class_order):
+            seg_old_spacing_final[seg_old_spacing[i] > 0.5] = c
+        seg_old_spacing = seg_old_spacing_final
+
+    bbox = properties_dict[0].get('crop_bbox')
+
+    if bbox is not None:
+        seg_old_size = np.zeros(shape_original_before_cropping)
+        for c in range(3):
+            bbox[c][1] = np.min((bbox[c][0] + seg_old_spacing.shape[c], shape_original_before_cropping[c]))
+        seg_old_size[bbox[0][0]:bbox[0][1],
+        bbox[1][0]:bbox[1][1],
+        bbox[2][0]:bbox[2][1]] = seg_old_spacing
+    else:
+        seg_old_size = seg_old_spacing
+
+    if seg_postprogess_fn is not None:
+        seg_old_size_postprocessed = seg_postprogess_fn(np.copy(seg_old_size), *seg_postprocess_args)
+    else:
+        seg_old_size_postprocessed = seg_old_size
+
+    seg_resized_itk = sitk.GetImageFromArray(seg_old_size_postprocessed.astype(np.uint8))
+    seg_resized_itk.SetSpacing(properties_dict[0]['itk_spacing'])
+    seg_resized_itk.SetOrigin(properties_dict[0]['itk_origin'])
+    seg_resized_itk.SetDirection(properties_dict[0]['itk_direction'])
+    sitk.WriteImage(seg_resized_itk, out_fname)
+
+    if (non_postprocessed_fname is not None) and (seg_postprogess_fn is not None):
+        seg_resized_itk = sitk.GetImageFromArray(seg_old_size.astype(np.uint8))
+        seg_resized_itk.SetSpacing(properties_dict['itk_spacing'])
+        seg_resized_itk.SetOrigin(properties_dict['itk_origin'])
+        seg_resized_itk.SetDirection(properties_dict['itk_direction'])
+        sitk.WriteImage(seg_resized_itk, non_postprocessed_fname)
+
+
 
 def infer_seg(val_inputs, models, opt,fold,testConfig):
     val_outputs=testConfig.Config.inference(val_inputs[0])
