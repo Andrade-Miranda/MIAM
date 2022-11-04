@@ -7,14 +7,14 @@ Created on Thu Oct 21 11:40:28 2021
 """
 import torch
 from monai.inferers import sliding_window_inference
-from monai.metrics import DiceMetric,ConfusionMatrixMetric,HausdorffDistanceMetric,SurfaceDistanceMetric
+from monai.metrics import DiceMetric
 
 
 
 from monai.transforms import (
         Activations,
         AsDiscrete,
-        Compose,AsChannelFirst)
+        Compose)
 
 class TestConfig():
     
@@ -24,16 +24,11 @@ class TestConfig():
         self.LoadConfig()
 
     def LoadConfig(self):
-        #metrics
         self.dice_metric = DiceMetric(include_background=True, reduction="mean")
-        self.Recall_Precision=ConfusionMatrixMetric(include_background=True,metric_name=('recall','precision'),reduction="mean",compute_sample=True)
-        self.HausdorffDis=HausdorffDistanceMetric(include_background=True, distance_metric='euclidean', percentile=95, directed=False, reduction="mean")
-        self.SurfDis=SurfaceDistanceMetric(include_background=True, symmetric=False, distance_metric='euclidean', reduction="mean")
-
+        self.dice_metric_batch = DiceMetric(include_background=True, reduction="mean_batch")
         
         if self.opt.dataset_mode=='MeanEnsemb':
             self.post_trans = Activations(sigmoid=True)
-            self.postLast=AsDiscrete(threshold_values=True)
         else:
             self.post_trans = Compose(
                 [Activations(sigmoid=True), AsDiscrete(threshold_values=True)]

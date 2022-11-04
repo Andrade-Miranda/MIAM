@@ -109,7 +109,10 @@ def load_trainingSetup(file_name,args,numiter):
             elif key=='yh_run_model':
                 value='test'
             elif key=='TrainConfig':
-                value='TestConfig'
+                if args.task_name=='Task004_BraTS2021':
+                    value='Test_ConfigBrats'
+                else:
+                    value='TestConfig'
             elif key=='conv_kernel_sizes':
                 newValue=value.translate({ord(i): None for i in '[,] '})
                 value= [(list(map(int,newValue[x:x+3]))) for x in range(0, len(newValue), 3)]
@@ -188,92 +191,66 @@ def check_input_folder_and_return_caseIDs(input_folder, expected_num_modalities)
 
     return maybe_case_ids
 
-def Mode_NCrossval(args,opt,output_folder):
+def Mode_NCrossval(args,opt,output_folder):#### need to be updated
     for i in range(len(args.folds)):
-        model=predict_from_folder(opt[i])
-    
+        maybe_mkdir_p(opt[i].output_dir)
+        model=predict_from_folder(opt[i]).eval() 
         data_loader = CreateDataLoader(opt[i])
         testConfig=TrainSetup(opt[i],model)
         test_loader = data_loader.load_test()
-    
-        maybe_mkdir_p(opt[i].output_dir)
-        metric_values_tumor = [] #DICE
-        HDistance = []
-        AVgSurfDis = []
-        recall_values_tumor = []
-        precision_values_tumor = []
-        results=[]
-        model.eval()
         with torch.no_grad():#Context-manager that disabled gradient calculation.
-            for batchIt in range(len(data_loader)):
+            for batchIt in range(40):#range(len(data_loader)):
                 val_data = next(test_loader)
-                val_inputs,val_labels= (
-                         val_data["image"].to(opt[i].device),
-                         val_data["label"].to(opt[i].device))
+                val_inputs,properties_dict= (
+                        val_data["image"].to(opt[0].device),
+                        val_data["properties"])
                 val_outputs = testConfig.Config.inference(val_inputs)
-                val_outputs = [testConfig.Config.post_trans(i) for i in decollate_batch(val_outputs)]
-                testConfig.Config.dice_metric(y_pred=val_outputs, y=val_labels)
-                testConfig.Config.Recall_Precision(y_pred=val_outputs, y=val_labels)
-                testConfig.Config.HausdorffDis(y_pred=val_outputs, y=val_labels)
-                testConfig.Config.SurfDis(y_pred=val_outputs, y=val_labels)
+                val_outputs = testConfig.Config.post_trans(val_outputs[0])
+          
+                out_fname=join(output_folder[i],val_data['keys'][0]+'.nii.gz')
+                save_segmentation_nifti_from_softmax(val_outputs, out_fname,
+                                         properties_dict, order=1,
+                                         region_class_order= None,
+                                         seg_postprogess_fn= None, seg_postprocess_args= None,
+                                         resampled_npz_fname= None,
+                                         non_postprocessed_fname= None, force_separate_z= None,
+                                         interpolation_order_z= 0, verbose= True)
+           
+                del val_outputs
+                del val_data
+                torch.cuda.empty_cache()             
 
-                metric = testConfig.Config.dice_metric.aggregate().item()
-                metric_values_tumor.append(metric)
-            
-                HD = testConfig.Config.HausdorffDis.aggregate().item()
-                HDistance.append(HD)
-            
-                SurfDis = testConfig.Config.SurfDis.aggregate().item()
-                AVgSurfDis.append(SurfDis)
 
-                Recall_Precision = testConfig.Config.Recall_Precision.aggregate()
-                recall=Recall_Precision[0].item()
-                precision=Recall_Precision[1].item()
-                recall_values_tumor.append(recall)
-                precision_values_tumor.append(precision)
-                
-                testConfig.Config.dice_metric.reset()
-                testConfig.Config.Recall_Precision.reset()
-                testConfig.Config.HausdorffDis.reset()
-                testConfig.Config.SurfDis.reset()
+def Mode_MeanEnsembBrats(args,opt):#we don't applied argmax or discrete give directly the sigmoid, region_class_order 
+    output_folder = args.output_dir
+    maybe_mkdir_p(output_folder)
+    data_loader = CreateDataLoader(opt[args.folds[0]])
+    test_loader = data_loader.load_test()#as is the same model use same pre-processing
+    models=[predict_from_folder(opt[i]).eval() for i in range(len(args.folds))]
+    testConfig=[TrainSetup(opt[i],models[i]) for i in range(len(args.folds))]
+    with torch.no_grad():#Context-manager that disabled gradient calculation.
+        for batchIt in range(len(data_loader)):
+            val_data = next(test_loader)
+            val_inputs,properties_dict= (
+                        val_data["image"].to(opt[0].device),
+                        val_data["properties"])
+            val_outputs = [testConfig[i].Config.inference(val_inputs) for i in range(len(args.folds))]
+            val_outStack=[]
+            for j in range(len(val_outputs)):
+                val_outStack.append([testConfig[j].Config.post_trans(i) for i in decollate_batch(val_outputs[j])][0])
+            val_outputs = torch.stack(val_outStack, dim=0).mean(dim=0)
+            out_fname=join(output_folder,val_data['keys'][0]+'.nii.gz')
 
-                
-                if not os.path.exists(join('./Output/predictions/',opt[i].dataroot)):#i==0:#check si existe true labels
-                    ### INPUT IMAGE
-                    maybe_mkdir_p(join('./Output/predictions/',opt[i].dataroot))
-                    inp=np.moveaxis(val_inputs[0,:,:,:,:].cpu().detach().numpy(),(0,1,2),(-1,-2,-3))
-                    new_image = nib.Nifti1Image(inp, affine=np.eye(4))
-                    new_image.header.get_xyzt_units()
-                    new_image.to_filename(join('./Output/predictions/',opt[i].dataroot,val_data['keys'][0]+'.nii.gz'))
-                
-                    ####LABEL True
-                    maybe_mkdir_p(join('./Output/predictions/',opt[i].dataroot))
-                    label=np.moveaxis(val_labels[0,:,:,:,:].cpu().detach().numpy(),(0,1,2),(-1,-2,-3))
-                    new_label = nib.Nifti1Image(label, affine=np.eye(4))
-                    new_label.header.get_xyzt_units()
-                    new_label.to_filename(join('./Output/predictions/',opt[i].dataroot,val_data['keys'][0]+'_labelTrue'+'.nii.gz')) 
-            
-                ####LABEL predictions
-                label=np.moveaxis(val_outputs[0].cpu().detach().numpy(),(0,1,2),(-1,-2,-3))
-                new_label = nib.Nifti1Image(label, affine=np.eye(4))
-                new_label.header.get_xyzt_units()
-                new_label.to_filename(join(output_folder[i],val_data['keys'][0]+'_labelPred'+'.nii.gz'))  
-            
-                print(
-                    f"Patients: {val_data['keys'][0]} "
-                    f" Dice: {metric:.5f}"
-                    f" ASD: {SurfDis:.5f} "
-                    f" HD: {HD:.5f} "
-                    f" Recall: {recall:.5f} "
-                    f" Precision: {precision:.5f} "
-                    ,flush=True
-                    )
-                results.append((val_data['keys'][0],metric,SurfDis,HD,recall,precision))
-            results.sort()
-        Dsc_ST,ASD_ST,HD_ST,recall_ST,precision_ST=metricStatistics(metric_values_tumor,AVgSurfDis,HDistance,recall_values_tumor,precision_values_tumor)
-        results.append(('Average',Dsc_ST,ASD_ST,HD_ST,recall_ST,precision_ST))
-        savePredictions(output_folder[i],results)
-        results=[]                
+            save_segmentation_nifti_from_softmax(val_outputs, out_fname,
+                                                 properties_dict, order=1, 
+                                                 region_class_order=(2,1,4),
+                                                 seg_postprogess_fn= None, seg_postprocess_args= None,
+                                                 resampled_npz_fname= None,
+                                                 non_postprocessed_fname= None, force_separate_z= None,
+                                                 interpolation_order_z= 0, verbose= True,isbrats=True)
+            del val_outputs
+            del val_data
+            torch.cuda.empty_cache()
 
 
 def Mode_MeanEnsemb(args,opt):
@@ -315,7 +292,7 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
                                          seg_postprogess_fn= None, seg_postprocess_args= None,
                                          resampled_npz_fname= None,
                                          non_postprocessed_fname= None, force_separate_z= None,
-                                         interpolation_order_z= 0, verbose= True):
+                                         interpolation_order_z= 0, verbose= True, isbrats=False):
     """
     This is a utility for writing segmentations to nifto and npz. It requires the data to have been preprocessed by
     GenericPreprocessor because it depends on the property dictionary output (dct) to know the geometry of the original
@@ -405,9 +382,15 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
         seg_old_spacing = seg_old_spacing[0]# i did ya argmax
     else:
         seg_old_spacing_final = np.zeros(seg_old_spacing.shape[1:])
-        for i, c in enumerate(region_class_order):
-            seg_old_spacing_final[seg_old_spacing[i] > 0.5] = c
-        seg_old_spacing = seg_old_spacing_final
+        if isbrats:
+            nclass=[1,0,2]
+            for i, c in enumerate(region_class_order):
+                seg_old_spacing_final[seg_old_spacing[nclass[i]] > 0.5] = c
+            seg_old_spacing = seg_old_spacing_final 
+        else:
+            for i, c in enumerate(region_class_order):
+                seg_old_spacing_final[seg_old_spacing[i] > 0.5] = c
+            seg_old_spacing = seg_old_spacing_final
 
     bbox = properties_dict[0].get('crop_bbox')
 
@@ -461,3 +444,20 @@ def transformations():
 )
         return tta_transforms
 
+def savePredictions(output_folder,results):
+    file_name = os.path.join(output_folder, 'predictions.txt')
+    with open(file_name, 'wt') as pred_file:
+        pred_file.write('------------ Options -------------\n')
+        for patients,dice,SurfDis,HD,recall,precision in results:
+            if patients!="Average":
+                pred_file.write(f"Patients: {patients} "
+                                f"DICE: {dice:.5f}"
+                                f" ASD: {SurfDis:.5f} HD: {HD:.4f} Recall: {recall:.5f} Precision: {precision:.5f} \n")
+            else:
+                pred_file.write(f"Metrics {patients}: "
+                                f"DICE: {dice[0]:.5f}"u"\u00B1"f"{dice[1]:.5f} "
+                                f"ASD: {SurfDis[0]:.5f}"u"\u00B1"f"{SurfDis[1]:.5f} "
+                                f"HD: {HD[0]:.5f}"u"\u00B1"f"{HD[1]:.5f} "
+                                f"Recall: {recall[0]:.5f}"u"\u00B1"f"{recall[1]:.5f} "
+                                f"Precision: {precision[0]:.5f}"u"\u00B1"f"{precision[1]:.5f} \n")
+        pred_file.write('-------------- End ----------------\n')

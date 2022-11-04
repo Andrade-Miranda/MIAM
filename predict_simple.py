@@ -17,7 +17,7 @@ import argparse
 from batchgenerators.utilities.file_and_folder_operations import join
 
 
-from util.testing_setup import load_trainingSetup,Mode_NCrossval,Mode_MeanEnsemb
+from util.testing_setup import load_trainingSetup,Mode_NCrossval,Mode_MeanEnsemb,Mode_MeanEnsembBrats
 
 
 
@@ -79,9 +79,12 @@ def main():
     if mode=='Nfold':
         Mode_NCrossval(args,opt,output_folder)
     elif mode=='MeanEnsemb':
-        Mode_MeanEnsemb(args,opt)
-    elif mode=='TTA':
-        Test_time_Augmentation(opt,fold=0)
+        if args.task_name.split('_')[-1]=='BraTS2021':
+            Mode_MeanEnsembBrats(args,opt)
+        else:
+            Mode_MeanEnsemb(args,opt)
+   # elif mode=='TTA':
+        #Test_time_Augmentation(opt,fold=0)
 
         
 

@@ -17,7 +17,10 @@ def CreateTrainConfig(opt,model):
         Config = BaseTrainConfig()
     elif opt.TrainConfig == 'TestConfig':#for test setup
         from config.Test_Config import TestConfig
-        Config = TestConfig()    
+        Config = TestConfig()   
+    elif opt.TrainConfig == 'Test_ConfigBrats':#for test setup
+        from config.Test_ConfigBrats import TestConfig
+        Config = TestConfig()  
     else:
         raise ValueError("Configuration [%s] not recognized." % opt.TrainConfig)
 
