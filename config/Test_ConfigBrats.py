@@ -27,12 +27,8 @@ class TestConfig():
         self.dice_metric = DiceMetric(include_background=True, reduction="mean")
         self.dice_metric_batch = DiceMetric(include_background=True, reduction="mean_batch")
         
-        if self.opt.dataset_mode=='MeanEnsemb':
-            self.post_trans = Activations(sigmoid=True)
-        else:
-            self.post_trans = Compose(
-                [Activations(sigmoid=True), AsDiscrete(threshold_values=True)]
-        )
+        self.post_trans = Activations(sigmoid=True)
+
 
     # define inference method
     def inference(self,input):

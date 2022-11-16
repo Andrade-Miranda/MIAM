@@ -103,9 +103,6 @@ def load_trainingSetup(file_name,args,numiter):
                     value=args.output_dir[numiter]
             elif key=='checkpoints_dir':
                 value=args.checkpoints_dir[numiter]
-            elif key=='pretrained':
-                 if value=='None':
-                     value=None
             elif key=='isTrain':
                 value=False
             elif key=="device":
@@ -155,11 +152,9 @@ def load_trainingSetup(file_name,args,numiter):
         
         if args.task_name.split('_')[-1]=='BraTS2021':
             lista.append(('region_class_order',(2,1,4)))
-            lista.append(('isbrats',True))
         else:
             lista.append(('region_class_order',None))
-            lista.append(('isbrats',False))
-            
+        
         opt=dict(lista)
         if opt['encoder'] in ['VIT_n','VIT_s','VIT_m','MVIT_n','MVIT_s','MVIT_m','CNN+VIT2Stream','SegResNetVAE','SegResNet','UNETR','Unet','SwinTrans3D']:
             opt['hybrid']=False
@@ -229,7 +224,7 @@ def Mode_NCrossval(args,opt,output_folder):#### need to be updated
                                          seg_postprogess_fn= None, seg_postprocess_args= None,
                                          resampled_npz_fname= None,
                                          non_postprocessed_fname= None, force_separate_z= None,
-                                         interpolation_order_z= 0, verbose= True,isbrats=opt[i].isbrats)
+                                         interpolation_order_z= 0, verbose= True)
            
                 del val_outputs
                 del val_data
@@ -394,18 +389,18 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
         save_pickle(properties_dict, resampled_npz_fname[:-4] + ".pkl")
 
     if region_class_order is None:
-        seg_old_spacing = seg_old_spacing[0].detach().cpu().numpy()# i did ya argmax
+        seg_old_spacing = seg_old_spacing[0]# i did ya argmax
     else:
         seg_old_spacing_final = np.zeros(seg_old_spacing.shape[1:])
         if isbrats:
             nclass=[1,0,2]
             for i, c in enumerate(region_class_order):
-                seg_old_spacing_final[seg_old_spacing.detach().cpu().numpy()[nclass[i]] > 0.5] = c
+                seg_old_spacing_final[seg_old_spacing[nclass[i]] > 0.5] = c
             seg_old_spacing = seg_old_spacing_final 
-        #else:
-            #for i, c in enumerate(region_class_order):
-             #   seg_old_spacing_final[seg_old_spacing.detach().cpu().numpy()[i] > 0.5] = c
-            #seg_old_spacing = seg_old_spacing_final
+        else:
+            for i, c in enumerate(region_class_order):
+                seg_old_spacing_final[seg_old_spacing[i] > 0.5] = c
+            seg_old_spacing = seg_old_spacing_final
 
     bbox = properties_dict[0].get('crop_bbox')
 

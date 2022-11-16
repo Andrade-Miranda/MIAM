@@ -56,46 +56,52 @@ import matplotlib.pyplot as plt
 
 
 
-##############
+##############NFOLDS HEKTOR########################################################################"""
+listFolds=[30,31,32,33,34,35,36,37,38,39]
+pathCNN='/home/gustavo/Data/results/Hektor2021/predictions/nfolds1/CNN_h+VIT_n/CNN_h+VIT_nF'
+pathMCNN='/home/gustavo/Data/results/Hektor2021/predictions/nfolds1/MCNN_h+VIT_n/MCNN_h+VIT_nF'
+pathUNETR='/home/gustavo/Data/results/Hektor2021/predictions/nfolds1/UNETR/UNETRF'
+pathSwin='/home/gustavo/Data/results/Hektor2021/predictions/nfolds1/SwinTrans3D/SwinTrans3DF'
 
-for i in [10]:
-    pathCNN='/home/gustavo/Data/results/Hektor2021/predictions/nfolds1/CNN_h+VIT_n/CNN_h+VIT_nF'+str(i)+'/metrics.csv'
-    pathMCNN='/home/gustavo/Data/results/Hektor2021/predictions/nfolds1/MCNN_h+VIT_n/MCNN_h+VIT_nF'+str(i)+'/metrics.csv'
-    pathUNETR='/home/gustavo/Data/results/Hektor2021/predictions/nfolds1/UNETR/UNETRF'+str(i)+'/metrics.csv'
-    pathSwin='/home/gustavo/Data/results/Hektor2021/predictions/nfolds1/SwinTrans3D/SwinTrans3DF'+str(i)+'/metrics.csv'
+def plot_Nfolds_Boxplots(listFolds,pathCNN,pathMCNN,pathUNETR,pathSwin):
+    for i in listFolds:
+        pathCNN=pathCNN+str(i)+'/metrics.csv'
+        pathMCNN=pathMCNN+str(i)+'/metrics.csv'
+        pathUNETR=pathUNETR+str(i)+'/metrics.csv'
+        pathSwin=pathSwin+str(i)+'/metrics.csv'
 
 
-    dataCNN = pd.read_csv(pathCNN)
-    dataMCNN =pd.read_csv(pathMCNN)
-    dataUNETR =pd.read_csv(pathUNETR)
-    dataSwin =pd.read_csv(pathSwin)
+        dataCNN = pd.read_csv(pathCNN)
+        dataMCNN =pd.read_csv(pathMCNN)
+        dataUNETR =pd.read_csv(pathUNETR)
+        dataSwin =pd.read_csv(pathSwin)
 
 
-    dataCNN=dataCNN.assign(Model="CNN+VIT-{B}/1")
-    dataMCNN=dataMCNN.assign(Model="MCNN+VIT-{B}/1")
-    dataUNETR=dataUNETR.assign(Model="UNETR")
-    dataSwin=dataSwin.assign(Model="Swin UNETR")
+        dataCNN=dataCNN.assign(Model="CNN+VIT-{B}/1")
+        dataMCNN=dataMCNN.assign(Model="MCNN+VIT-{B}/1")
+        dataUNETR=dataUNETR.assign(Model="UNETR")
+        dataSwin=dataSwin.assign(Model="Swin UNETR")
     
-    Alldata=pd.concat([dataCNN, dataMCNN,dataUNETR,dataSwin], ignore_index=True)
-    Alldata.rename(columns={'dice': 'Avg Dice', 'msd': 'ASSD'}, inplace=True)
-    # Draw a vertical boxplot grouped 
-    # by a categorical variable:
-    #create your own color array
-    my_colors = ["#4285f4", "#ea4335", 
+        Alldata=pd.concat([dataCNN, dataMCNN,dataUNETR,dataSwin], ignore_index=True)
+        Alldata.rename(columns={'dice': 'Avg Dice', 'msd': 'ASSD'}, inplace=True)
+        # Draw a vertical boxplot grouped 
+        # by a categorical variable:
+        #create your own color array
+        my_colors = ["#4285f4", "#ea4335", 
              "#34a853", "#ffff00"]
   
-    # add color array to set_palette
-    # function of seaborn
-    sns.set(font_scale=1.8)
-    sns.set_style("whitegrid")
-    sns.set_palette( my_colors )
+        # add color array to set_palette
+        # function of seaborn
+        sns.set(font_scale=1.8)
+        sns.set_style("whitegrid")
+        sns.set_palette( my_colors )
     
 
-    sns.boxplot(y=Alldata['Avg Dice']*100,x=Alldata['Model'] ,orient="v",width=0.5)
-    sns.swarmplot(y=Alldata['Avg Dice']*100,x=Alldata['Model'] ,orient="v",marker="x", linewidth=1,color='gray')
+        sns.boxplot(y=Alldata['Avg Dice']*100,x=Alldata['Model'] ,orient="v",width=0.5)
+        sns.swarmplot(y=Alldata['Avg Dice']*100,x=Alldata['Model'] ,orient="v",marker="x", linewidth=1,color='gray')
 
-    sns.boxplot(y=Alldata['ASSD'],x=Alldata['Model'] ,orient="v",width=0.5)
-    sns.swarmplot(y=Alldata['ASSD'],x=Alldata['Model'] ,orient="v",marker="x", linewidth=1,color='gray',)
+        sns.boxplot(y=Alldata['ASSD'],x=Alldata['Model'] ,orient="v",width=0.5)
+        sns.swarmplot(y=Alldata['ASSD'],x=Alldata['Model'] ,orient="v",marker="x", linewidth=1,color='gray',)
 
 
 

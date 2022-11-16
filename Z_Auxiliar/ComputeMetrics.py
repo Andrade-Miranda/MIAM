@@ -15,7 +15,7 @@ import argparse
 def initialize():
     parser = argparse.ArgumentParser(description='Options')
     parser.add_argument('--task',type=str, default='Task003_HektorTest', help='True values')
-    parser.add_argument('--pathPrediction', type=str, default='/home/gustavo/Data/results/Hektor2021/predictions/nfolds2/SwinTrans3D/SwinTrans3DF28', help='predictions') 
+    parser.add_argument('--pathPrediction', type=str, default='/home/gustavo/Data/results/Hektor2021/predictions/FinalResults/nnUNet_Ensemble', help='predictions') 
     parser.add_argument('--csv_file', type=str, default='metrics.csv', help='file to save metrics') 
     parser.add_argument('--labels', nargs='+', default=[0,1], help='specify the data to convert') 
 
