@@ -8,16 +8,17 @@ Created on Tue Nov  1 16:01:02 2022
 
 
             
-import seg_metrics.seg_metrics as sg
+#import seg_metrics.seg_metrics as sg
+import metricsforBrats2021 as sg
 import argparse
 
 
 def initialize():
     parser = argparse.ArgumentParser(description='Options')
-    parser.add_argument('--task',type=str, default='Task003_HektorTest', help='True values')
-    parser.add_argument('--pathPrediction', type=str, default='/home/gustavo/Data/results/Hektor2021/predictions/FinalResults/nnUNet_Ensemble', help='predictions') 
+    parser.add_argument('--task',type=str, default='Task004_BraTS2021Test', help='True values')#brats:'Task004_BraTS2021Test' hektor:'Task003_HektorTest'
+    parser.add_argument('--pathPrediction', type=str, default='/home/gustavo/Data/results/BratS2021/predictions/FinalResults/CNN_h+VIT_n_Ensemble', help='predictions') 
     parser.add_argument('--csv_file', type=str, default='metrics.csv', help='file to save metrics') 
-    parser.add_argument('--labels', nargs='+', default=[0,1], help='specify the data to convert') 
+    parser.add_argument('--labels', nargs='+', default=[0,1,2,4], help='specify the data to convert') #brats:[0,1,2,4] ->hecktor:[0,1]
 
 
     #T1DUALin-src T1DUALout-src

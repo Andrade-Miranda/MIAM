@@ -855,7 +855,7 @@ class SwinTransformer3D(nn.Module):
             in_channels=in_channels,
             out_channels=out_channels,
             feature_size=feature_size,
-            drop_rate=0.0,
+            drop_rate=opt.dropout_rate,
             attn_drop_rate=0.0,
             dropout_path_rate=0.0,
             use_checkpoint=True,

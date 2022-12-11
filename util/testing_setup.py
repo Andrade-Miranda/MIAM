@@ -161,7 +161,7 @@ def load_trainingSetup(file_name,args,numiter):
             lista.append(('isbrats',False))
             
         opt=dict(lista)
-        if opt['encoder'] in ['VIT_n','VIT_s','VIT_m','MVIT_n','MVIT_s','MVIT_m','CNN+VIT2Stream','SegResNetVAE','SegResNet','UNETR','Unet','SwinTrans3D']:
+        if opt['encoder'] in ['VIT_n','VIT_s','VIT_m','MVIT_n','MVIT_s','MVIT_m','CNN+VIT2Stream','SegResNetVAE','SegResNet','UNETR','Unet','SwinTrans3D','MCNN_h']:
             opt['hybrid']=False
         else:
             opt['hybrid']=True
@@ -401,6 +401,7 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
             nclass=[1,0,2]
             for i, c in enumerate(region_class_order):
                 seg_old_spacing_final[seg_old_spacing.detach().cpu().numpy()[nclass[i]] > 0.5] = c
+                
             seg_old_spacing = seg_old_spacing_final 
         #else:
             #for i, c in enumerate(region_class_order):

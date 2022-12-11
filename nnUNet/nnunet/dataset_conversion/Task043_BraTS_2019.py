@@ -17,7 +17,7 @@ import numpy as np
 from collections import OrderedDict
 
 from batchgenerators.utilities.file_and_folder_operations import *
-from nnunet.paths import nnUNet_raw_data
+from nnUNet.nnunet.paths import nnUNet_raw_data
 import SimpleITK as sitk
 import shutil
 
@@ -30,7 +30,7 @@ def copy_BraTS_segmentation_and_convert_labels(in_file, out_file):
 
     uniques = np.unique(img_npy)
     for u in uniques:
-        if u not in [0, 1, 2, 4]:
+        if u not in [0, 1, 2,3,4]:
             raise RuntimeError('unexpected label')
 
     seg_new = np.zeros_like(img_npy)

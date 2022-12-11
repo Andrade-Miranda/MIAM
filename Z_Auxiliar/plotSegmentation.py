@@ -16,20 +16,45 @@ import matplotlib.pyplot as plt
 
 
 fig=plt.figure(figsize=(8, 8))
-columns = 2
+columns = 4
 rows = 2
 for i in range(columns*rows):
     fig.add_subplot(rows, columns, i+1)
-    if i in range(2):
-        img=inputs[0,i,:,:,55].detach().numpy()
+    if i in range(4):
+        img=inputs[0,i,:,:,50].detach().numpy()
         plt.imshow(img,cmap='gray')
-    elif i==2:
-        img=labels[0,0,:,:,55].detach().numpy()
+    elif i in range(4,7):
+        img=labels[0,i-4,:,:,50].detach().numpy()
         plt.imshow(img,cmap='gray')
     else:
         break
     
 plt.show()
+
+
+
+fig=plt.figure(figsize=(8, 8))
+columns = 4
+rows = 3
+for i in range(columns*rows):
+    fig.add_subplot(rows, columns, i+1)
+    if i in range(4):
+        img=val_inputs[0,i,:,:,60].detach().numpy()
+        plt.imshow(img,cmap='gray')
+    elif i in range(4,7):
+        img=val_data['label'][0,i-4,:,:,60].detach().numpy()
+        plt.imshow(img,cmap='gray')
+    elif i in range(7,10):
+        img=val_outputs[i-7,:,:,60].detach().numpy()
+        plt.imshow(img,cmap='gray')
+    
+plt.show()
+
+
+
+
+
+
 
 
 fig=plt.figure(figsize=(8, 8))
