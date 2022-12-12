@@ -51,7 +51,38 @@ import matplotlib.pyplot as plt
 # sns.boxplot(data=[dataCNN["dice"], dataMCNN["dice"], dataUNETR["dice"],dataSwin["dice"]], orient="v")
 
 
+########ALL models#############
+import os
+from os import listdir
+from os.path import isfile, join
+predictionPath='/Users/gustavoandrade/Library/CloudStorage/GoogleDrive-gxandrade.miranda@gmail.com/Mi unidad/0_extra/results/Hecktor/predictions/FinalResults/Predictions-Final'
+onlyfiles = [f for f in listdir(predictionPath) if isfile(join(predictionPath, f))]
 
+data=[]
+for i,files in enumerate(onlyfiles):
+    data.append(pd.read_csv(os.path.join(predictionPath,files)))
+    data[i]=data[i].assign(Model=files.split('.')[0])
+    data[i].rename(columns={'dice': 'Dice', 'msd': 'ASSD'}, inplace=True)
+
+Alldata=pd.concat(data,ignore_index=True)
+my_colors = ["#4285f4", "#ea4335", 
+             "#34a853", "#ffff00"]
+  
+# add color array to set_palette
+# function of seaborn
+sns.set(font_scale=1.8)
+sns.set_style("whitegrid")
+sns.set_palette( my_colors )
+    
+
+sns.boxplot(y=Alldata['Dice']*100,x=Alldata['Model'] ,orient="v",width=0.1)
+sns.swarmplot(y=Alldata['Dice']*100,x=Alldata['Model'] ,orient="v",marker="x", linewidth=0.5,color='gray')
+
+sns.boxplot(x=Alldata['Dice']*100,y=Alldata['Model'] ,orient="h")
+sns.swarmplot(x=Alldata['Dice']*100,y=Alldata['Model'] ,orient="h",color='gray')
+
+sns.boxplot(y=Alldata['ASSD'],x=Alldata['Model'] ,orient="v",width=0.2)
+sns.swarmplot(y=Alldata['ASSD'],x=Alldata['Model'] ,orient="v",marker="x", linewidth=1,color='gray',)
 
 
 
