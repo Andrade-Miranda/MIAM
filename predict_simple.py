@@ -47,7 +47,7 @@ def main():
     parser.add_argument('--chkname',
                         help='checkpoint extension, only available for one chk for folder',
                         required=False,
-                        default='lastestCHK.pth')
+                        default='BestCHK.pth')
     parser.add_argument('--chkdir',
                         help='checkpoint directory',
                         required=False,

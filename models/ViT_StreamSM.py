@@ -321,8 +321,8 @@ class ViT_M(nn.Module):
 
     def forward(self, x):
         mod=0
-        for i in x:
-            x[mod] = self.patch_embedding(i)
+        for layer,i in enumerate(x):
+            x[mod] = self.patch_embedding[layer](i)
             mod=mod+1
         x=torch.cat(x,1)
      

@@ -4,7 +4,7 @@ def create_model(opt):
                    'VIT_n','VIT_s','VIT_m','SegResNetVAE','SegResNet','UNETR','SwinTrans3DSimple','SwinTrans3D','nnFormer',
                    'SCNN_h+VIT_n','MCNN_l+VIT_n','SCNN_h+VIT_s','SCNN_h+VIT_m','Transfuse','Swinfuse','MCNN_h+VIT_n-CL','SCNN_h+VIT_n-CL',
                    'VIT_s-T1T2','VIT_m-T1T2','MCNN_h+VIT_n-T1T2','MCNN_h+VIT_s-T1T2','MCNN_h+VIT_m-T1T2', 'MCNN_h','ConVnext-UNet','MCNN_h+VIT-backbone',
-                   'MCNN_h+VIT_cv']
+                   'MCNN_h+VIT_cv','VIT_m0']
     decoderOption=['linear','CNN_PUP+MLA', 'VIT_PUP+MLA', 'VIT']
     
     print(f"Model is hybrid: {opt.hybrid}. Encoder: {opt.encoder}, Decoder: {opt.decoder}")
@@ -88,8 +88,11 @@ def create_model(opt):
         elif opt.encoder=='VIT_s':#si
             from .VITs import VITSingle    
             model = VITSingle(opt)
-        elif opt.encoder=='VIT_m':#si
+        elif opt.encoder=='VIT_m':#si use crossvit only for two modalities
             from .VITm import VITMultiple    
+            model = VITMultiple(opt)
+        elif opt.encoder=='VIT_m0':#si old version multiples modalities
+            from .VITm0 import VITMultiple    
             model = VITMultiple(opt)
         ###################### SOTA VIT#####################
         elif opt.encoder=='UNETR':#si
