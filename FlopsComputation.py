@@ -26,7 +26,7 @@ def main():
     parser.add_argument('-o', "--output_folder",default='flops', required=False, help="folder for saving flops")
     parser.add_argument('-t', '--task_name', help='task name or task ID, required.',
                         default='Task004_Hektor', required=False)#'Task001_BraTS2021' 'Task004_Hektor'
-    parser.add_argument('-m', '--model', help='models name', default="UNETR", required=False)
+    parser.add_argument('-m', '--model', help='models name', default="nnFormer", required=False)
     parser.add_argument("--num_threads_preprocessing", required=False, default=6, type=int, help=
     "Determines many background processes will be used for data preprocessing. Reduce this if you "
     "run into out of memory (RAM) problems. Default: 6")
