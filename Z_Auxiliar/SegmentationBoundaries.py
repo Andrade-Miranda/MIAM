@@ -5,30 +5,12 @@ Created on Fri Jan 13 16:52:09 2023
 
 @author: gustavo
 """
-
-models=dict()
-
-
-Models={'MCNN+ViTv':(0.34,0.829,0.86),'MCNN+ViT-{s}-B/1}$-c}':{0.34,0.606,0.86},'MCNN+ViT-{m}-B/1}$-c}{rgb}':(0.34,0.383,0.86),
-        'U-Net':(0.86,0.371,0.34),'MU-Net':(0.86,0.594,0.34),'nn-UNet':(0.86,0.817,0.34)}
-# \definecolor{nnFormer-c}{rgb}{0.68,0.86,0.34}
-# \definecolor{$\mathregular{CNN+ViT-{v}-B/1}$-c}{rgb}{0.457,0.86,0.34}
-# \definecolor{3D-Transfuse-c}{rgb}{0.34,0.86,0.445}
-# \definecolor{3D-Swinfuse-c}{rgb}{0.34,0.86,0.668}
-
-# \definecolor{$\mathregular{UNETR-{v}}$-c}{rgb}{0.52,0.34,0.86}
-# \definecolor{$\mathregular{UNETR-{s}}$-c}{rgb}{0.743,0.34,0.86}
-# \definecolor{$\mathregular{UNETR-{m}}$-c}{rgb}{0.86,0.34,0.755}
-# \definecolor{Swin UNETR-c}{rgb}{0.86,0.34,0.532}
-
 import numpy as np
 from skimage.segmentation import mark_boundaries,find_boundaries
 from skimage.exposure import rescale_intensity
 import nibabel as nib
 import os
 import argparse
-
-
 
 
 def load_Nii(data):
@@ -67,28 +49,37 @@ def boundaries(data,colors):
 
 
 
+models=dict()
+
+pathlabel='/Users/gustavoandrade/Downloads/labelsTr'
+pathimage='/Users/gustavoandrade/Downloads/imagesTr'
+NiftiHektor=['HektorTest2021-CHUP042_00014-100','HektorTest2021-CHUP048_00019-71',
+             'HektorTest2021-CHUP052_00023-75','HektorTest2021-CHUV027_00074-69']
+
+Models={'MCNN_h+VIT_n_Ensemble':(0.34,0.829,0.86),'MCNN_h+VIT_s_Ensemble':{0.34,0.606,0.86},'MCNN_h+VIT_cv_Ensemble':(0.34,0.383,0.86),
+        'Unet_Ensemble':(0.86,0.371,0.34),'MCNN_h_Ensemble':(0.86,0.594,0.34),'nnUNet_Ensemble':(0.86,0.817,0.34),
+        'UNETR_Ensemble':(0.52,0.34,0.86),'VIT_m_Ensemble':(0.743,0.34,0.86),'VIT_s_Ensemble':(0.86,0.34,0.755), 'SwinTrans3D_Ensemble':(0.86,0.34,0.532),               
+        'CNN_h+VIT_n_Ensemble':(0.457,0.86,0.34),'Transfuse_Ensemble':(0.34,0.86,0.445),'Swinfuse_Ensemble':(0.34,0.86,0.668),
+        'nnFormer_Ensemble':(0.68,0.86,0.34), 'GT':(0.5,0.5,0.5)}
 
 
-if __name__=='__main__':
-    opt=initialize().parse_args()
+cnnBased=['GT','Unet_Ensemble','MCNN_h_Ensemble','nnUNet_Ensemble']
+FullTrans=['GT','nnFormer_Ensemble']
+Transform=['GT','UNETR_Ensemble','VIT_m_Ensemble','VIT_s_Ensemble','SwinTrans3D_Ensemble']   
+MultiVit=['GT','MCNN_h+VIT_n_Ensemble','MCNN_h+VIT_s_Ensemble','MCNN_h+VIT_cv_Ensemble']
+OneVit=['GT','CNN_h+VIT_n_Ensemble','Transfuse_Ensemble','Swinfuse_Ensemble']
+best=['GT','MCNN_h+VIT_s_Ensemble','nnUNet_Ensemble']
 
-
-    dataImg=opt.data
-    dataGT=opt.GT
-    dataUNETR=opt.UNETR
-    dataCNN=opt.CNN
-    dataMCNN=opt.MCNN
-    dataSwin=opt.Swin
-
-    colors=[(1,0,0),(0,0,1),(0,1,0),(0.9,0.6,0.9)]
-    results=[dataImg,dataGT,dataMCNN,dataCNN,dataUNETR,dataSwin]    
-
-    image_numpyImg,reference_nifti_loaded=load_Nii(results)
-    out,masks=boundaries(image_numpyImg,colors)
-    if type(masks)is list:
-        j=1
-        for msk in masks:
-            nib.save(nib.Nifti1Image(msk*j, None, reference_nifti_loaded.header),os.path.join(opt.outputImg,'labelPred'+str(j)+'.nii.gz'))
-            j+=1
-    else:
-        nib.save(nib.Nifti1Image(msk, None, reference_nifti_loaded.header),os.path.join(opt.outputImg,'labelPred.nii.gz'))
+for file in NiftiHektor:
+    sliceAx=file.split('_')[-1]
+    image_numpy,reference_nifti_loaded=load_Nii(os.path.join(pathlabel,file))
+    
+    
+out,masks=boundaries(image_numpyImg,colors)
+if type(masks)is list:
+    j=1
+    for msk in masks:
+        nib.save(nib.Nifti1Image(msk*j, None, reference_nifti_loaded.header),os.path.join(opt.outputImg,'labelPred'+str(j)+'.nii.gz'))
+        j+=1
+else:
+       nib.save(nib.Nifti1Image(msk, None, reference_nifti_loaded.header),os.path.join(opt.outputImg,'labelPred.nii.gz'))
