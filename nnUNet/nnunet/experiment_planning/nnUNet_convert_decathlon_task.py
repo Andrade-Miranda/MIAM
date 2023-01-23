@@ -11,6 +11,11 @@
 #    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
+# importing module
+import sys
+# appending a path
+sys.path.append('../../')
+
 from batchgenerators.utilities.file_and_folder_operations import *
 from nnunet.configuration import default_num_threads
 from nnunet.experiment_planning.utils import split_4d

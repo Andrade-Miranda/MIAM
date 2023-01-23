@@ -16,7 +16,7 @@ def CreateDataset(opt):
         raise ValueError("Dataset [%s] not recognized." % opt.dataset_mode)
     
     dataset.initialize(opt)
-    print("dataset [%s] was created" % (dataset.name()))
+    print("dataset [%s] was created using [%s] dataloader" % (dataset.name(),opt.dataset_mode))
     
     return dataset
 

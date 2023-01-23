@@ -12,12 +12,12 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+
+# importing module
 import sys
 # appending a path
-sys.path.append('../../../')
+sys.path.append('../../')
 
-import os
-import nnunet
 from batchgenerators.utilities.file_and_folder_operations import *
 from nnUNet.nnunet.experiment_planning.DatasetAnalyzer import DatasetAnalyzer
 from nnUNet.nnunet.experiment_planning.utils import crop
@@ -36,11 +36,12 @@ def main():
                                                             " experiment planning and preprocessing for. Each of these "
                                                             "ids must, have a matching folder 'TaskXXX_' in the raw "
                                                             "data folder")
+    parser.add_argument("-testing", "--testing", dest='testing', action='store_true',default=False,help="Preprocessing testing set")
     parser.add_argument("-pl3d", "--planner3d", type=str, default="ExperimentPlanner3D_v21",
                         help="Name of the ExperimentPlanner class for the full resolution 3D U-Net and U-Net cascade. "
                              "Default is ExperimentPlanner3D_v21. Can be 'None', in which case these U-Nets will not be "
                              "configured")
-    parser.add_argument("-pl2d", "--planner2d", type=str, default="ExperimentPlanner2D_v21",
+    parser.add_argument("-pl2d", "--planner2d", type=str, default="None",
                         help="Name of the ExperimentPlanner class for the 2D U-Net. Default is ExperimentPlanner2D_v21. "
                              "Can be 'None', in which case this U-Net will not be configured")
     parser.add_argument("-no_pp", action="store_true",
@@ -83,6 +84,7 @@ def main():
     dont_run_preprocessing = args.no_pp
     tl = args.tl
     tf = args.tf
+    test=args.testing
     planner_name3d = args.planner3d
     planner_name2d = args.planner2d
 
@@ -102,19 +104,21 @@ def main():
     tasks = []
     for i in task_ids:
         i = int(i)
-        
-        os.chdir("../../../")# change current directory
+
         task_name = convert_id_to_task_name(i)
 
         if args.verify_dataset_integrity:
             verify_dataset_integrity(join(nnUNet_raw_data, task_name))
 
-        crop(task_name, False, tf)
+        crop(task_name, False, tf,test)
 
-        tasks.append(task_name)
+        if test:
+            tasks.append(task_name+'-Test')
+        else:
+            tasks.append(task_name)
 
-    search_in = join(nnunet.__path__[0], "experiment_planning")
-
+    search_in = join('./nnUNet/nnunet', "experiment_planning")#join(nnunet.__path__[0], "experiment_planning")
+    
     if planner_name3d is not None:
         planner_3d = recursive_find_python_class([search_in], planner_name3d, current_module="nnunet.experiment_planning")
         if planner_3d is None:
@@ -148,7 +152,8 @@ def main():
 
         maybe_mkdir_p(preprocessing_output_dir_this_task)
         shutil.copy(join(cropped_out_dir, "dataset_properties.pkl"), preprocessing_output_dir_this_task)
-        shutil.copy(join(nnUNet_raw_data, t, "dataset.json"), preprocessing_output_dir_this_task)
+        generaltask=t.split('-')[0]
+        shutil.copy(join(nnUNet_raw_data, generaltask, "dataset.json"), preprocessing_output_dir_this_task)
 
         threads = (tl, tf)
 
@@ -163,7 +168,10 @@ def main():
                 exp_planner = planner_3d(cropped_out_dir, preprocessing_output_dir_this_task)
             exp_planner.plan_experiment()
             if not dont_run_preprocessing:  # double negative, yooo
-                exp_planner.run_preprocessing(threads)
+                if test:
+                    exp_planner.run_preprocessingTest(threads)
+                else:
+                    exp_planner.run_preprocessing(threads)
         if planner_2d is not None:
             exp_planner = planner_2d(cropped_out_dir, preprocessing_output_dir_this_task)
             exp_planner.plan_experiment()

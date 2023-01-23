@@ -22,11 +22,11 @@ class BaseOptions():
         self.parser.add_argument('--TrainConfig', type=str, default='BaseConfig',help='Configuration file that specify optimizers, metrics, lr schedule, etc')
         self.parser.add_argument('--Deterministic', dest='Deterministic',action='store_false',default=True, help='if is True the Deterministic training for reproducibility')          
         self.parser.add_argument('--loadsplit',  type=str, default=None,help='load custom splits saved in splits_plk file')  
-        self.parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
+        self.parser.add_argument('--checkpoints_dir', type=str, default=None, help='models are saved here, default is None meaning that files will save in ./checkpoints/TaskName')
         self.parser.add_argument('--display_id', type=int, default=1, help='Display final pdf results')#no used yet
         self.parser.add_argument('--yh_run_model', type=str, default='Train', help='chooses which Train or Test')
         self.parser.add_argument('--dataset_mode', type=str, default='nnUNet', help='choose the dataset mode to load the data, by default BRATS')
-        self.parser.add_argument('--output_dir', type=str, default='./Output', help='save test segmentatio output results')
+        self.parser.add_argument('--output_dir', type=str, default=None, help='save test segmentatio output results here, default is None meaning that files will save in ./Output/TaskName')
         self.parser.add_argument('--.', type=int, default=0, help='custom_sub_dir')
 
         # models
@@ -99,10 +99,20 @@ class BaseOptions():
         if self.opt.region[0]!='None' and self.opt.dataroot!='Task001_BraTS2021':
             self.opt.region=tuple([tuple([int(i) for i in x.split(',')]) if len(x)>1 else (int(x),) for x in self.opt.region])
        
-        expr_dir = os.path.join(self.opt.checkpoints_dir,self.opt.encoder,self.opt.name)
-        out_dir = os.path.join(self.opt.output_dir, self.opt.name)
+        ### set checkpoint and output folder
+        if self.opt.checkpoints_dir is not None:
+            expr_dir = os.path.join('./checkpoints',self.opt.dataroot,self.opt.checkpoints_dir,self.opt.encoder,self.opt.name)
+        else:
+            expr_dir = os.path.join('./checkpoints',self.opt.dataroot,self.opt.encoder,self.opt.name)
         util.mkdirs(expr_dir)
+        
+        if self.opt.output_dir is not None:
+            out_dir = os.path.join('./Output',self.opt.dataroot,self.opt.output_dir,self.opt.encoder,self.opt.name)
+        else:
+            out_dir = os.path.join('./Output',self.opt.dataroot,self.opt.encoder,self.opt.name)
         util.mkdirs(out_dir)
+        ###
+        
         file_name = os.path.join(expr_dir, 'opt.txt')
         with open(file_name, 'wt') as opt_file:
             opt_file.write('------------ Options -------------\n')

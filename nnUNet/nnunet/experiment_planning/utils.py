@@ -57,7 +57,8 @@ def split_4d(input_folder, num_processes=default_num_threads, overwrite_task_out
 
     files = []
     output_dirs = []
-
+    
+    os.chdir("../../../")
     maybe_mkdir_p(output_folder)
     for subdir in ["imagesTr", "imagesTs"]:
         curr_out_dir = join(output_folder, subdir)

@@ -301,7 +301,7 @@ class nnUNetDataset(BaseDataset):
             all_keys_sorted = np.sort(list(dataset.keys()))
             
             if self.opt.loadsplit is not None:
-                splits_file=os.path.join('./splits_plk', self.opt.loadsplit) #splits_final.pkl    
+                splits_file=os.path.join('./splits_plk',self.opt.dataroot,self.opt.loadsplit) #splits_final.pkl    
                 print("Loading split...:%s" % splits_file)
                 ##### temporary solution for create a new custom pkl split
                 # from util.split_fnct import Brats_splitprogressive2

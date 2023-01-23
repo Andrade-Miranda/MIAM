@@ -5,7 +5,7 @@ import time
 from . import util
 #matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from util.tsne import tsne
+#from util.tsne import tsne
 import torch
 
 
@@ -550,42 +550,42 @@ class VisualPlots():
         plt.savefig(os.path.join(self.opt.out_dir,'HD-ASD.pdf'))  
         
         
-    def save_latentspacePlot(self,epochs,zConv,labels,zVit,option):
-        # labelsVit=[]
-        # for j in range(len(zVit)):
-        #     for i in range(self.opt.batchSize):
-        #         labelsVit+=[i]*512
+    # def save_latentspacePlot(self,epochs,zConv,labels,zVit,option):
+    #     # labelsVit=[]
+    #     # for j in range(len(zVit)):
+    #     #     for i in range(self.opt.batchSize):
+    #     #         labelsVit+=[i]*512
         
-        # if option[0] and option[1]:
-        #     plt.figure("t-sne Latent space", (12, 6))
-        #     plt.subplot(1, 2, 1)
-        #     plt.title("Contrastive Loss")
-        #     z=torch.cat(zConv)
-        #     featsize=z.shape[-1]
-        #     Y = tsne(z.view(-1,featsize).detach().cpu().numpy(), 2, 50, 20.0)
-        #     plt.scatter(Y[:, 0], Y[:, 1], 20, labels)
-        #     plt.show()
-        #     plt.savefig(os.path.join(self.opt.out_dir,str(epochs)+'_ContrastiveCNN.pdf'))
-        #     plt.close()
+    #     # if option[0] and option[1]:
+    #     #     plt.figure("t-sne Latent space", (12, 6))
+    #     #     plt.subplot(1, 2, 1)
+    #     #     plt.title("Contrastive Loss")
+    #     #     z=torch.cat(zConv)
+    #     #     featsize=z.shape[-1]
+    #     #     Y = tsne(z.view(-1,featsize).detach().cpu().numpy(), 2, 50, 20.0)
+    #     #     plt.scatter(Y[:, 0], Y[:, 1], 20, labels)
+    #     #     plt.show()
+    #     #     plt.savefig(os.path.join(self.opt.out_dir,str(epochs)+'_ContrastiveCNN.pdf'))
+    #     #     plt.close()
             
-        #     plt.subplot(1, 2, 2)
-        #     plt.title("PatchNCE")
-        #     z=torch.cat(zVit)
-        #     featsize=z.shape[-1]
-        #     Y = tsne(z.view(-1,featsize).detach().cpu().numpy(), 2, 50, 20.0)
-        #     plt.scatter(Y[:, 0], Y[:, 1], 20, labelsVit)
-        #     plt.show()
-        #     plt.savefig(os.path.join(self.opt.out_dir,str(epochs)+'_ContrastiveViT.pdf'))
+    #     #     plt.subplot(1, 2, 2)
+    #     #     plt.title("PatchNCE")
+    #     #     z=torch.cat(zVit)
+    #     #     featsize=z.shape[-1]
+    #     #     Y = tsne(z.view(-1,featsize).detach().cpu().numpy(), 2, 50, 20.0)
+    #     #     plt.scatter(Y[:, 0], Y[:, 1], 20, labelsVit)
+    #     #     plt.show()
+    #     #     plt.savefig(os.path.join(self.opt.out_dir,str(epochs)+'_ContrastiveViT.pdf'))
             
-        if option[0]:
-            plt.figure("t-sne Contrastive Loss", (12, 6))
-            z=torch.cat(zConv)
-            featsize=z.shape[-1]
-            Y = tsne(z.view(-1,featsize).detach().cpu().numpy(), 2, 50, 20.0)
-            plt.scatter(Y[:, 0], Y[:, 1], 20, labels)
-            plt.show()
-            plt.savefig(os.path.join(self.opt.out_dir,str(epochs)+'_ContrastiveCNN.pdf'))
-            plt.close()
+    #     if option[0]:
+    #         plt.figure("t-sne Contrastive Loss", (12, 6))
+    #         z=torch.cat(zConv)
+    #         featsize=z.shape[-1]
+    #         Y = tsne(z.view(-1,featsize).detach().cpu().numpy(), 2, 50, 20.0)
+    #         plt.scatter(Y[:, 0], Y[:, 1], 20, labels)
+    #         plt.show()
+    #         plt.savefig(os.path.join(self.opt.out_dir,str(epochs)+'_ContrastiveCNN.pdf'))
+    #         plt.close()
 
         
         # elif option[1]:
