@@ -21,11 +21,11 @@ from multiprocessing import Pool
 
 import numpy as np
 from batchgenerators.utilities.file_and_folder_operations import join, isdir, maybe_mkdir_p, subfiles, subdirs, isfile
-from nnunet.configuration import default_num_threads
-from nnunet.experiment_planning.DatasetAnalyzer import DatasetAnalyzer
-from nnunet.experiment_planning.common_utils import split_4d_nifti
-from nnunet.paths import nnUNet_raw_data, nnUNet_cropped_data, preprocessing_output_dir
-from nnunet.preprocessing.cropping import ImageCropper
+from nnUNet.nnunet.configuration import default_num_threads
+from nnUNet.nnunet.experiment_planning.DatasetAnalyzer import DatasetAnalyzer
+from nnUNet.nnunet.experiment_planning.common_utils import split_4d_nifti
+from nnUNet.nnunet.paths import nnUNet_raw_data, nnUNet_cropped_data, preprocessing_output_dir
+from nnUNet.nnunet.preprocessing.cropping import ImageCropper
 
 
 def split_4d(input_folder, num_processes=default_num_threads, overwrite_task_output_id=None):

@@ -21,7 +21,7 @@ from monai.transforms import (
         AsDiscrete,
         Compose)
 
-class BaseTrainConfig():
+class TransFuseConfig():
     
     def initialize(self, opt,model):
         self.opt=opt
@@ -34,7 +34,7 @@ class BaseTrainConfig():
         self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=int(self.opt.epochs*0.2),eta_min=1e-5)
         self.scaler = torch.cuda.amp.GradScaler()
         self.post_trans = Compose(
-                [Activations(sigmoid=True), AsDiscrete(threshold_values=True)]
+                [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
             )
         
         #metrics

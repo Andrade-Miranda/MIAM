@@ -13,10 +13,10 @@
 #    limitations under the License.
 from copy import deepcopy
 
-from nnunet.experiment_planning.common_utils import get_pool_and_conv_props
-from nnunet.experiment_planning.experiment_planner_baseline_2DUNet import ExperimentPlanner2D
-from nnunet.network_architecture.generic_UNet import Generic_UNet
-from nnunet.paths import *
+from nnUNet.nnunet.experiment_planning.common_utils import get_pool_and_conv_props
+from nnUNet.nnunet.experiment_planning.experiment_planner_baseline_2DUNet import ExperimentPlanner2D
+from nnUNet.nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnUNet.nnunet.paths import *
 import numpy as np
 
 

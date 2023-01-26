@@ -13,8 +13,8 @@ class BaseOptions():
 
     def initialize(self):
         self.parser.add_argument('--dataroot', type=str,default='Task001_BraTS2021', help='dataset path (Task001_Prostate, json file "./datasets/BraTS2021/dataset.json") or Folder with images, it will depend of the configuration')
-        self.parser.add_argument('--Val_batchSize', type=int, default=1, help='validation batch size')
-        self.parser.add_argument('--batchSize', type=int, default=1, help='input batch size')
+        self.parser.add_argument('--Val_batchSize', type=int, default=2, help='validation batch size')
+        self.parser.add_argument('--batchSize', type=int, default=2, help='input batch size')
         self.parser.add_argument('--input_nc', type=int, default=4, help='# of input image channels')
         self.parser.add_argument('--output_nc', type=int, default=3, help='# of output image channels')
         self.parser.add_argument('--gpu_ids', type=str, default='-1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
@@ -24,15 +24,13 @@ class BaseOptions():
         self.parser.add_argument('--loadsplit',  type=str, default=None,help='load custom splits saved in splits_plk file')  
         self.parser.add_argument('--checkpoints_dir', type=str, default=None, help='models are saved here, default is None meaning that files will save in ./checkpoints/TaskName')
         self.parser.add_argument('--display_id', type=int, default=1, help='Display final pdf results')#no used yet
-        self.parser.add_argument('--yh_run_model', type=str, default='Train', help='chooses which Train or Test')
+        self.parser.add_argument('--yh_run_model', type=str, default='Train', help='chooses which Train or Test')#no used yet by the moment test and training has different scripts
         self.parser.add_argument('--dataset_mode', type=str, default='nnUNet', help='choose the dataset mode to load the data, by default BRATS')
         self.parser.add_argument('--output_dir', type=str, default=None, help='save test segmentatio output results here, default is None meaning that files will save in ./Output/TaskName')
         self.parser.add_argument('--.', type=int, default=0, help='custom_sub_dir')
 
         # models
-        self.parser.add_argument('--hybrid', dest='hybrid',action='store_true', default=False, help='Encoder is hybrid, default true')  
         self.parser.add_argument('--encoder', type=str, default='MCNN_h+VIT_n',help='chooses encoder to use CNN_h+VIT_n, CNN_l+VIT_n,MCNN_{h,l}+VIT_{n,s,m}')        
-        self.parser.add_argument('--decoder', type=str, default='CNN_PUP+MLA',help='chooses decoder; linear, CNN-PUP+MLA, VIT_PUP+MLA, VIT')  
 
         self.initialized = True
         
@@ -47,7 +45,14 @@ class BaseOptions():
         if not self.initialized:
             self.initialize()
         self.opt = self.parser.parse_args()
-        self.opt.isTrain = self.isTrain   # train or test
+        
+        
+        #### Train o test ############
+        if self.opt.yh_run_model=='Train':
+            self.opt.isTrain = True   # test is not available yet
+        else:
+            self.opt.isTrain = False
+        #############################
         
         #### device CPU or CUDA############
         if self.opt.gpu_ids =='-1':
@@ -83,6 +88,7 @@ class BaseOptions():
         else:
             self.opt.imageSize=CurrentPlan['plans_per_stage'][self.opt.stage]['patch_size']
         '-------------'
+                
 
         print('------------ Options -------------')
         for k, v in sorted(self.args.items()):
@@ -125,5 +131,15 @@ class BaseOptions():
         max_epochs = self.opt.epochs
         val_interval = self.opt.val_interval
         Plots=VisualPlots(self.opt) #I will use to save some segmentation results. At the moment is only for plot loss curve
+        
+        #create log_file or Wandb file
+        os.makedirs(self.opt.out_dir, exist_ok=True)
+        self.opt.log_writer = utils.TensorboardLogger(log_dir=self.opt.out_dir)
+        if self.opt.enable_wandb:
+            wandb_logger = utils.WandbLogger(opt)
+        else:
+            wandb_logger = None
+        
+        
         
         return self.opt,root_dir,max_epochs,val_interval,Plots

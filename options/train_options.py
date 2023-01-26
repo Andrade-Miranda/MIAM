@@ -8,7 +8,7 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--imageSize', nargs='+', default= 0, help='Image Size after pre-processing')
         self.parser.add_argument('--epochs', type=int, default=150, help='# of epochs')
         self.parser.add_argument('--VAL_AMP',  dest='VAL_AMP', action='store_true',default=False, help='Automatic Mixed Precision package - torch.cuda.amp')
-        self.parser.add_argument('--MoreAug',  dest='MoreAug', action='store_true',default=False, help='Extra Augmentation, NO AVAILABLE')
+        self.parser.add_argument('--seed', type=int, default=12345, help='# of seed for deterministic training')
         self.parser.add_argument('--region', nargs='+', default=((1,4),(1,4,2),(4,)), help='segmentation regions to merge, default Brats')
         self.parser.add_argument('--patchSize', type=int, default=1, help='number of the patch for transformer network')
         self.parser.add_argument('--hidden_size', type=int, default=768, help='dimension of the transformer hiddensize')
@@ -26,13 +26,20 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--lr', type=float, default=5e-4, metavar='LR',help='learning rate (default: 5e-4)')
         self.parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
         self.parser.add_argument('--Earlyfusion', type=str, default="Concatenation", help='type of early fusion')
+        
+        # Weights and Biases arguments
+        parser.add_argument('--enable_wandb', type=str2bool, default=False,
+                    help="enable logging to Weights and Biases")
+        parser.add_argument('--project', default='convnext', type=str,
+                    help="The name of the W&B project where you're sending the new run.")
+        parser.add_argument('--wandb_ckpt', type=str2bool, default=False,
+                       help="Save model checkpoints as W&B Artifacts.")
 
 ####################OPTION AVAILABLE only with config contrastive###################################""""        
         self.parser.add_argument('--lambdaCNN', type=float, default=1e-1, help='lambda contrastive CNN')
         self.parser.add_argument('--lambdaViT', type=float, default=1e-2, help='lambda contrastive vit')
         self.parser.add_argument('--SupContrast',  dest='SupContrast', action='store_true',default=False, help='Supervised contrastive loss only work when config CL is used')
         self.parser.add_argument('--PatchNCELoss',  dest='PatchNCELoss', action='store_true',default=False, help='NCE patch contrastive loss only work when config CL is used')
-        self.isTrain = True
 
         
 ####################OPTION AVAILABLE WITH HYBRID TIMM###################################""""

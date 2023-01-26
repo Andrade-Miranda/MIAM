@@ -12,12 +12,12 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import nnunet
+import nnUNet.nnunet
 import torch
 from batchgenerators.utilities.file_and_folder_operations import *
 import importlib
 import pkgutil
-from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
+from nnUNet.nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
 
 
 def recursive_find_python_class(folder, trainer_name, current_module):

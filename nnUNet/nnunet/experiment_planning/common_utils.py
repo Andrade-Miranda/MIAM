@@ -14,7 +14,7 @@
 
 import numpy as np
 from copy import deepcopy
-from nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnUNet.nnunet.network_architecture.generic_UNet import Generic_UNet
 import SimpleITK as sitk
 import shutil
 from batchgenerators.utilities.file_and_folder_operations import join

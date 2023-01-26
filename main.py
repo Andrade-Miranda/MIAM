@@ -14,8 +14,7 @@ from monai.data import (
 from util.util import save_model
 from monai.utils import set_determinism
 
-#torch.backends.cudnn.benchmark = True
-############# Load Options##########################
+############# Load Options####################################################
 opt,root_dir,max_epochs,val_interval,Plots=TrainOptions().parse()
 
 if opt.Deterministic:
@@ -23,16 +22,12 @@ if opt.Deterministic:
     set_determinism(seed)
     np.random.seed(seed)
     random.seed(seed)
-##############################################################################
-
-
 """------------------------------------------------------------"""
 # use cpu --gpu_ids -1, GPU --gpu_ids>=0
 if len(opt.gpu_ids) == 0:
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 """------------------------------------------------------------"""
 ##########################################################"
-
 
 
 #################TRAIN###################################"
@@ -43,8 +38,6 @@ print('#Datasize = %d: Training:%d   Validation:%d' % (len(data_loader),datalen[
     
 """ Multiples GPU """ 
 model = create_model(opt)
-# x=torch.rand((2,2,128,128,128))
-# y=model(x)
 """---------------------"""
 trainConfig=TrainSetup(opt,model)
 print('#Config Training scheme created')
@@ -165,7 +158,7 @@ for epoch in range(max_epochs):
             best_metrics_epochs_and_time[1].append(best_metric_epoch)
             best_metrics_epochs_and_time[2].append(time.time() - total_start)
             ####save best model
-            save_model(epoch,model,trainConfig.Config.optimizer,loss,metric,os.path.join(root_dir,'BestCHK'+".pth"))
+            save_model(epoch,model,trainConfig.Config.optimizer,loss,trainConfig.Config.scaler,trainConfig.Config.lr_scheduler,metric,os.path.join(root_dir,'BestCHK'+".pth"))
             print("saved new best Dice metric model",flush=True)
             Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor,HDistance, AVgSurfDis,val_interval)
         print(
@@ -178,7 +171,7 @@ for epoch in range(max_epochs):
                f" at epoch: {best_metric_epoch}",flush=True
                )
 Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor, HDistance, AVgSurfDis,val_interval)
-save_model(epoch,model,trainConfig.Config.optimizer,loss,metric,os.path.join(root_dir,'lastCHK'+".pth"))
+save_model(epoch,model,trainConfig.Config.optimizer,loss,trainConfig.Config.scaler,trainConfig.Config.lr_scheduler,metric,os.path.join(root_dir,'lastCHK'+".pth"))
 print(f"time consuming of epoch {epoch + 1} is: {(time.time() - epoch_start):.5f}",flush=True)
 total_time = time.time() - total_start
 print(f"train completed, best_dice: {best_metric:.5f} - best_HD: {best_HD:.5f} - best_SurfDis: {best_SurfDis:.5f} at epoch: {best_metric_epoch}, total time: {total_time}.")

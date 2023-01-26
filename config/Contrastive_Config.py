@@ -24,7 +24,7 @@ from monai.transforms import (
         AsDiscrete,
         Compose)
 
-class BaseContrLrnConfig():
+class ContrastiveConfig():
     
     def initialize(self, opt,model,Cl=[True,False]):
         self.opt=opt

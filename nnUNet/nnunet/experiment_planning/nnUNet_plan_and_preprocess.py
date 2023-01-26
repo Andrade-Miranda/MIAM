@@ -17,7 +17,7 @@ import sys
 sys.path.append('../../../')
 
 import os
-import nnunet
+import nnUNet.nnunet
 from batchgenerators.utilities.file_and_folder_operations import *
 from nnUNet.nnunet.experiment_planning.DatasetAnalyzer import DatasetAnalyzer
 from nnUNet.nnunet.experiment_planning.utils import crop
@@ -113,18 +113,19 @@ def main():
 
         tasks.append(task_name)
 
-    search_in = join(nnunet.__path__[0], "experiment_planning")
+    #search_in = join(nnUNet.__path__[0], "experiment_planning")
+    search_in = join('./nnUNet/nnunet', "experiment_planning")
 
     if planner_name3d is not None:
-        planner_3d = recursive_find_python_class([search_in], planner_name3d, current_module="nnunet.experiment_planning")
+        planner_3d = recursive_find_python_class([search_in], planner_name3d, current_module="nnUNet.nnunet.experiment_planning")
         if planner_3d is None:
             raise RuntimeError("Could not find the Planner class %s. Make sure it is located somewhere in "
-                               "nnunet.experiment_planning" % planner_name3d)
+                               "nnUNet.nnunet.experiment_planning" % planner_name3d)
     else:
         planner_3d = None
 
     if planner_name2d is not None:
-        planner_2d = recursive_find_python_class([search_in], planner_name2d, current_module="nnunet.experiment_planning")
+        planner_2d = recursive_find_python_class([search_in], planner_name2d, current_module="nnUNet.nnunet.experiment_planning")
         if planner_2d is None:
             raise RuntimeError("Could not find the Planner class %s. Make sure it is located somewhere in "
                                "nnunet.experiment_planning" % planner_name2d)

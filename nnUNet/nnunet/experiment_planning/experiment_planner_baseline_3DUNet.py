@@ -16,17 +16,17 @@ import shutil
 from collections import OrderedDict
 from copy import deepcopy
 
-import nnunet
+import nnUNet.nnunet
 import numpy as np
 from batchgenerators.utilities.file_and_folder_operations import *
-from nnunet.configuration import default_num_threads
-from nnunet.experiment_planning.DatasetAnalyzer import DatasetAnalyzer
-from nnunet.experiment_planning.common_utils import get_pool_and_conv_props_poolLateV2
-from nnunet.experiment_planning.utils import create_lists_from_splitted_dataset
-from nnunet.network_architecture.generic_UNet import Generic_UNet
-from nnunet.paths import *
-from nnunet.preprocessing.cropping import get_case_identifier_from_npz
-from nnunet.training.model_restore import recursive_find_python_class
+from nnUNet.nnunet.configuration import default_num_threads
+from nnUNet.nnunet.experiment_planning.DatasetAnalyzer import DatasetAnalyzer
+from nnUNet.nnunet.experiment_planning.common_utils import get_pool_and_conv_props_poolLateV2
+from nnUNet.nnunet.experiment_planning.utils import create_lists_from_splitted_dataset
+from nnUNet.nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnUNet.nnunet.paths import *
+from nnUNet.nnunet.preprocessing.cropping import get_case_identifier_from_npz
+from nnUNet.nnunet.training.model_restore import recursive_find_python_class
 
 
 class ExperimentPlanner(object):
@@ -429,8 +429,10 @@ class ExperimentPlanner(object):
         normalization_schemes = self.plans['normalization_schemes']
         use_nonzero_mask_for_normalization = self.plans['use_mask_for_norm']
         intensityproperties = self.plans['dataset_properties']['intensityproperties']
-        preprocessor_class = recursive_find_python_class([join(nnunet.__path__[0], "preprocessing")],
-                                                         self.preprocessor_name, current_module="nnunet.preprocessing")
+        #preprocessor_class = recursive_find_python_class([join(nnunet.__path__[0], "preprocessing")],
+        #                                                 self.preprocessor_name, current_module="nnunet.preprocessing")
+        preprocessor_class = recursive_find_python_class([join('./nnUNet/nnunet', "preprocessing")],
+                                                         self.preprocessor_name, current_module="nnUNet.nnunet.preprocessing")
         assert preprocessor_class is not None
         preprocessor = preprocessor_class(normalization_schemes, use_nonzero_mask_for_normalization,
                                          self.transpose_forward,

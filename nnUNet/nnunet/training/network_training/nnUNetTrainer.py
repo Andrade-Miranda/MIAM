@@ -26,21 +26,21 @@ from batchgenerators.utilities.file_and_folder_operations import *
 from torch import nn
 from torch.optim import lr_scheduler
 
-import nnunet
-from nnunet.configuration import default_num_threads
-from nnunet.evaluation.evaluator import aggregate_scores
-from nnunet.inference.segmentation_export import save_segmentation_nifti_from_softmax
-from nnunet.network_architecture.generic_UNet import Generic_UNet
-from nnunet.network_architecture.initialization import InitWeights_He
-from nnunet.network_architecture.neural_network import SegmentationNetwork
-from nnunet.postprocessing.connected_components import determine_postprocessing
-from nnunet.training.data_augmentation.default_data_augmentation import default_3D_augmentation_params, \
+import nnUNet.nnunet
+from nnUNet.nnunet.configuration import default_num_threads
+from nnUNet.nnunet.evaluation.evaluator import aggregate_scores
+from nnUNet.nnunet.inference.segmentation_export import save_segmentation_nifti_from_softmax
+from nnUNet.nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnUNet.nnunet.network_architecture.initialization import InitWeights_He
+from nnUNet.nnunet.network_architecture.neural_network import SegmentationNetwork
+from nnUNet.nnunet.postprocessing.connected_components import determine_postprocessing
+from nnUNet.nnunet.training.data_augmentation.default_data_augmentation import default_3D_augmentation_params, \
     default_2D_augmentation_params, get_default_augmentation, get_patch_size
-from nnunet.training.dataloading.dataset_loading import load_dataset, DataLoader3D, DataLoader2D, unpack_dataset
-from nnunet.training.loss_functions.dice_loss import DC_and_CE_loss
-from nnunet.training.network_training.network_trainer import NetworkTrainer
-from nnunet.utilities.nd_softmax import softmax_helper
-from nnunet.utilities.tensor_utilities import sum_tensor
+from nnUNet.nnunet.training.dataloading.dataset_loading import load_dataset, DataLoader3D, DataLoader2D, unpack_dataset
+from nnUNet.nnunet.training.loss_functions.dice_loss import DC_and_CE_loss
+from nnUNet.nnunet.training.network_training.network_trainer import NetworkTrainer
+from nnUNet.nnunet.utilities.nd_softmax import softmax_helper
+from nnUNet.nnunet.utilities.tensor_utilities import sum_tensor
 
 matplotlib.use("agg")
 

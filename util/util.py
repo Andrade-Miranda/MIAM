@@ -89,7 +89,7 @@ def tensor2SegNii(image_tensor, numLabel=3,imtype=np.uint8):
 
 
 
-""" ------------EXTRA  FUCNTION LOAD and save variables json files------------------- """
+""" ------------EXTRA  FUCNTION LOAD and save variables as json files------------------- """
 import json
 from json import JSONEncoder
 import numpy
@@ -147,11 +147,12 @@ def print_network(net):
     print(net)
     print('Total number of trainables parameters: %d' % n_parameters)
     
-def save_model(epoch,model,optimizer,loss,metric,PATH):
+def save_model(epoch,model,optimizer,loss,loss_scaler,lr_scheduler,metric,PATH):
     torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
+            'lr_scheduler': lr_scheduler.state_dict(),
             'loss': loss,
             'metric':metric,
             },PATH)

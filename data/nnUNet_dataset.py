@@ -136,19 +136,21 @@ class nnUNetDataset(BaseDataset):
         default_2D_augmentation_params["dummy_2D"] = False
         default_2D_augmentation_params["mirror_axes"] = (0, 1)  # this can be (0, 1, 2) if dummy_2D=True
         
-        self.MoreAug=opt.MoreAug
         if self.opt.Deterministic:##fix seed to always generate the same augmentation
-            self.seeds_train, self.seeds_val= [i for i in range(self.default_3D_augmentation_params.get('num_threads'))], [i for i in range(self.default_3D_augmentation_params.get('num_threads'))] ##fix seed to always generate the same augmentation
+            self.seeds_train, self.seeds_val= [self.opt.seed for i in range(self.default_3D_augmentation_params.get('num_threads'))], [self.opt.seed for i in range(self.default_3D_augmentation_params.get('num_threads'))] ##fix seed to always generate the same augmentation
         else:
             self.seeds_train, self.seeds_val= None, None 
            
         self.n_splits=self.opt.n_splits# seteado parra solo 5 splits por el momento
-        self.random_state=12345
+        self.random_state=self.opt.seed
         self.fold=opt.fold
 
         #default preprocessing folder - default plan
         self.preprocessing_output_dir='./nnUNet/data/nnUnet_preprocessed' 
-
+        
+        #default setting nnUNET dataloading
+        self.pad_all_sides = None
+        self.oversample_foreground_percent = 0.33
         
         
         #check if I have to fuse region, this is particular useful for brats dataset
@@ -181,7 +183,7 @@ class nnUNetDataset(BaseDataset):
         return final_shape.astype(int)
 
 
-    def get_default_augmentation(self,dataloader_train, patch_size,
+    def get_default_augmentation(self,dataloader_train,dataloader_val, patch_size,
                                  border_val_seg=-1, pin_memory=True):
         
         regions=self.regions
@@ -280,12 +282,13 @@ class nnUNetDataset(BaseDataset):
             #val_transforms.append(ConvertSegToRegionsTransform(regions,keys="label"))
 
         val_transforms.append(NumpyToTensor(['image', 'label'], 'float'))
-        self.val_transforms = Compose(val_transforms)
+        val_transforms = Compose(val_transforms)
 
-        batchgenerator_val = DataLoaderTest3D(self.dataset_val,self.val_transforms,self.opt.Val_batchSize)
-        # batchgenerator_val = MultiThreadedAugmenter(dataloader_val, val_transforms, max(params.get('num_threads') // 2, 1),
-        #                                          params.get("num_cached_per_thread"), seeds=self.seeds_val,
-        #                                          pin_memory=pin_memory)
+        #batchgenerator_val = DataLoaderTest3D(self.dataset_val,self.val_transforms,self.opt.Val_batchSize)
+        batchgenerator_val = MultiThreadedAugmenter(dataloader_val, val_transforms, max(params.get('num_threads') // 2, 1),
+                                                    params.get("num_cached_per_thread"), seeds=self.seeds_val[:int(max(params.get('num_threads') // 2, 1))],
+                                                    pin_memory=pin_memory)
+        
         return batchgenerator_train, batchgenerator_val
 
 
@@ -362,9 +365,20 @@ class nnUNetDataset(BaseDataset):
                                           self.default_3D_augmentation_params['scale_range'])
 
         self.dataset_tr,self.dataset_val=self.do_split(dataset,self.fold)
-        dtran = DataLoader3D(self.dataset_tr, basic_patch_size, np.array(self.opt.imageSize).astype(int), self.opt.batchSize)
+        
+        
+        dtran = DataLoader3D(self.dataset_tr, basic_patch_size, np.array(self.opt.imageSize).astype(int), self.opt.batchSize,
+                             False, oversample_foreground_percent=self.oversample_foreground_percent,
+                             pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
+        
+        dl_val = DataLoader3D(self.dataset_val, np.array(self.opt.imageSize).astype(int), np.array(self.opt.imageSize).astype(int), self.opt.Val_batchSize, 
+                              False,oversample_foreground_percent=self.oversample_foreground_percent,
+                              pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
+        
         #dval = DataLoader3D(self.dataset_val, np.array(plans['plans_per_stage'][0]['median_patient_size_in_voxels']), np.array(plans['plans_per_stage'][0]['median_patient_size_in_voxels']), self.opt.Val_batchSize)
-        tr, val = self.get_default_augmentation(dtran, np.array(self.opt.imageSize).astype(int))
+        #tr, val = self.get_default_augmentation(dtran, np.array(self.opt.imageSize).astype(int))
+        tr, val = self.get_default_augmentation(dtran,dl_val, np.array(self.opt.imageSize).astype(int))
+        
         self.train_loader, self.val_loader=tr, val
         
         return self.train_loader, self.val_loader

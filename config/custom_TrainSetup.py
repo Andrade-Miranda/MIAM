@@ -9,12 +9,15 @@ def CreateTrainConfig(opt,model):
     elif opt.TrainConfig == 'TIMMConfig':#for training using TIMM library
         from config.TIMM_Config import TIMMConfig
         Config = TIMMConfig()
-    elif opt.TrainConfig == 'BaseConfig+ContrasLearn':#for training using contrastive loss
-        from config.BaseContrLrn_Config import BaseContrLrnConfig
-        Config = BaseContrLrnConfig()
-    elif opt.TrainConfig == 'BaseTrainConfig':#for test setup
-        from config.BaseTrainConfig import BaseTrainConfig
-        Config = BaseTrainConfig()
+    elif opt.TrainConfig == 'ContrastConfig':#for training using contrastive loss
+        from config.Contrastive_Config import ContrastiveConfig
+        Config = ContrastiveConfig()
+    elif opt.TrainConfig == 'TransFuseConfig':#for test setup
+        from config.TransFuse_Config import TransFuseConfig
+        Config = TransFuseConfig()
+    elif opt.TrainConfig == 'nnUNetConfig': #nnUNEt setup
+        from config.nnUNet_Config import nnUNetConfig
+        Config = nnUNet_Config() 
     elif opt.TrainConfig == 'TestConfig':#for test setup
         from config.Test_Config import TestConfig
         Config = TestConfig()   
