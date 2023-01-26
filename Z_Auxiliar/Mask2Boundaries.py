@@ -42,7 +42,7 @@ def drawContour(img,seg,color):
     # ... then the same again but for pixels with a vaue of 2 in the segmented image within a radius of 1 pixel of a black pixel
     #seg= (skimage.filters.rank.minimum(np.uint8(seg),selem) == 0) & (skimage.filters.rank.maximum(np.uint8(seg), selem) == 1)
     
-    out=mark_boundaries(img, np.uint8(seg*1), color=color)
+    out=mark_boundaries(img, np.uint8(seg*1), color=color,mode='inner')
     
     return out
 
