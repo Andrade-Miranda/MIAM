@@ -27,12 +27,21 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
         self.parser.add_argument('--Earlyfusion', type=str, default="Concatenation", help='type of early fusion')
         
+        
+        
+    # distributed training parameters
+        self.parser.add_argument('--world_size', default=1, type=int,help='number of distributed processes')
+        self.parser.add_argument('--local_rank', default=-1, type=int)
+        self.parser.add_argument('--dist_on_itp', action='store_true',dest='dist_on_itp', default=False)
+        self.parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
+        
+        
         # Weights and Biases arguments
-        parser.add_argument('--enable_wandb', type=str2bool, default=False,
+        self.parser.add_argument('--enable_wandb',action='store_true', dest='enable_wandb', default=False,
                     help="enable logging to Weights and Biases")
-        parser.add_argument('--project', default='convnext', type=str,
+        self.parser.add_argument('--project', default='MIAM', type=str,
                     help="The name of the W&B project where you're sending the new run.")
-        parser.add_argument('--wandb_ckpt', type=str2bool, default=False,
+        self.parser.add_argument('--wandb_ckpt', action='store_true',dest='wandb_ckpt', default=False,
                        help="Save model checkpoints as W&B Artifacts.")
 
 ####################OPTION AVAILABLE only with config contrastive###################################""""        

@@ -7,395 +7,7 @@ from . import util
 import matplotlib.pyplot as plt
 #from util.tsne import tsne
 import torch
-
-
-class Visualizer():
-    def __init__(self, opt):
-        # self.opt = opt
-        self.display_id = opt.display_id
-        self.use_html = opt.isTrain and not opt.no_html
-        self.win_size = opt.display_winsize
-        self.name = opt.name
-        self.translation=opt.which_direction
-        if self.display_id > 0:
-            import visdom
-            self.vis = visdom.Visdom(port = opt.display_port)
-            self.display_single_pane_ncols = opt.display_single_pane_ncols
-
-        if self.use_html:
-            self.web_dir = os.path.join(opt.checkpoints_dir, opt.name, 'Training')
-            self.img_dir = os.path.join(self.web_dir, 'images')
-            print('create Training images directory %s...' % self.web_dir)
-            util.mkdirs([self.web_dir, self.img_dir])
-        self.log_name = os.path.join(opt.checkpoints_dir, opt.name, 'loss_log.txt')
-        with open(self.log_name, "a") as log_file:
-            now = time.strftime("%c")
-            log_file.write('================ Training Loss (%s) ================\n' % now)
-
-
-    # errors: dictionary of error labels and values
-    def plot_current_errors(self, epoch, counter_ratio, opt, errors):
-        if not hasattr(self, 'plot_data'):
-            self.plot_data = {'X':[],'Y':[], 'legend':list(errors.keys())}
-        self.plot_data['X'].append(epoch + counter_ratio)
-        self.plot_data['Y'].append([errors[k] for k in self.plot_data['legend']])
-        self.vis.line(
-            X=np.stack([np.array(self.plot_data['X'])]*len(self.plot_data['legend']),1),
-            Y=np.array(self.plot_data['Y']),
-            opts={
-                'title': self.name + ' loss over time',
-                'legend': self.plot_data['legend'],
-                'xlabel': 'epoch',
-                'ylabel': 'loss'},
-            win=self.display_id)
-        
-        
-
-    # errors: same format as |errors| of plotCurrentErrors
-    def print_current_errors(self, epoch, i, errors, t):
-        message = '(epoch: %d, iters: %d, time: %.3f) ' % (epoch, i, t)
-        for k, v in errors.items():
-            message += '%s: %.3f ' % (k, v)
-
-        print(message)
-        with open(self.log_name, "a") as log_file:
-            log_file.write('%s\n' % message)
-
-    # save image to the disk
-    def save_images(self, webpage, visuals, image_path):
-        image_dir = webpage.get_image_dir()
-        short_path = ntpath.basename(image_path[0])
-        name = os.path.splitext(short_path)[0]
-
-        webpage.add_header(name)
-        ims = []
-        txts = []
-        links = []
-
-        for label, image_numpy in visuals.items():
-            image_name = '%s_%s.png' % (name, label)
-            save_path = os.path.join(image_dir, image_name)
-            util.save_image(image_numpy, save_path)
-
-            ims.append(image_name)
-            txts.append(label)
-            links.append(image_name)
-        webpage.add_images(ims, txts, links, width=self.win_size)
-
-    def mkdir(self,path):
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-######################NO en USO por el momento################################
-    def save_images_to_dir(self, image_dir, visuals, image_path):
-        short_path = ntpath.basename(image_path[0])
-        name = os.path.splitext(short_path)[0]
-        full_path_strs = image_path[0].split('/')
-
-        save_dir = os.path.join(image_dir, 'img_fake_only', full_path_strs[-3], full_path_strs[-2])
-        self.mkdir(save_dir)
-
-        label = 'fake_B'
-        image_numpy = visuals[label]
-        image_name = '%s_%s.png' % (name, label)
-        save_path = os.path.join(save_dir,image_name)
-        if not os.path.exists(save_path):
-            util.save_image(image_numpy, save_path)
-
-        save_dir = os.path.join(image_dir, 'img_all', full_path_strs[-3], full_path_strs[-2])
-        self.mkdir(save_dir)
-
-        label = 'fake_B'
-        image_numpy = visuals[label]
-        image_name = '%s_%s.png' % (name, label)
-        save_path = os.path.join(save_dir, image_name)
-        if not os.path.exists(save_path):
-            util.save_image(image_numpy, save_path)
-
-        label = 'real_A'
-        image_numpy = visuals[label]
-        image_name = '%s_%s.png' % (name, label)
-        save_path = os.path.join(save_dir,image_name)
-        if not os.path.exists(save_path):
-            util.save_image(image_numpy, save_path)
-
-        label = 'real_B'
-        image_numpy = visuals[label]
-        image_name = '%s_%s.png' % (name, label)
-        save_path = os.path.join(save_dir,image_name)
-        if not os.path.exists(save_path):
-            util.save_image(image_numpy, save_path)
-
-        label = 'fake_A'
-        image_numpy = visuals[label]
-        image_name = '%s_%s.png' % (name, label)
-        save_path = os.path.join(save_dir,image_name)
-        if not os.path.exists(save_path):
-            util.save_image(image_numpy, save_path)
-
-        label = 'rec_A'
-        image_numpy = visuals[label]
-        image_name = '%s_%s.png' % (name, label)
-        save_path = os.path.join(save_dir,image_name)
-        if not os.path.exists(save_path):
-            util.save_image(image_numpy, save_path)
-
-        label = 'rec_B'
-        image_numpy = visuals[label]
-        image_name = '%s_%s.png' % (name, label)
-        save_path = os.path.join(save_dir,image_name)
-        if not os.path.exists(save_path):
-            util.save_image(image_numpy, save_path)
- ######################NO en USO por el momento################################
-
-
-
-#########save image to the disk during training#############################
-############Segmentation Cyclegan Synsegnet#####################################
-    def save_current_imagesSegmentation(self, image_dir, visuals, image_path,epochs,epoch_iter):
-        short_path = [os.path.splitext(ntpath.basename(i))[0] for i in image_path]
-        
-        self.mkdir(image_dir)
-        print('Save training results in %s...' % image_dir)
-        
-        columns = 4
-        rows = 3
-        labels=['Real Image','Real Segmentation','Fake Segmentation']
-        fig,big_axes=plt.subplots(figsize=(15, 15),nrows=rows, ncols=1, sharey=True)
-        for row, big_ax in enumerate(big_axes, start=1):
-            if row==1:
-                big_ax.set_title("%s \n" % labels[row-1], fontsize=14)
-            else:
-                big_ax.set_title("%s" % labels[row-1], fontsize=14)
-            big_ax.set_xticks([])
-            big_ax.set_yticks([])
-            big_ax._frameon = False
-        for i in range(columns*rows):
-            fig.add_subplot(rows, columns, i+1)
-            plt.axis('off')
-            if i in range(4):
-                plt.title(short_path[i])
-                img=visuals['real_A'][:,:,i]
-                plt.imshow(img,cmap='gray')
-            elif i in range(4,8):
-                img=visuals['manual_B'][:,:,i-4]
-                plt.imshow(img,cmap='gray')
-            else:
-                img=visuals['seg_B'][:,:,i-8]
-                plt.imshow(img,cmap='gray')
-        plt.savefig(os.path.join(image_dir,str(epochs)+'_'+str(epoch_iter)+'_RealVsSegmented.pdf'))
-        plt.close()
-##########################################################################
-
-
-# save image to the disk
-    def save_current_images(self, image_dir, visuals, A_paths,B_paths,epochs,epoch_iter):
-        short_pathA = [os.path.splitext(ntpath.basename(i))[0] for i in A_paths]
-        short_pathB = [os.path.splitext(ntpath.basename(i))[0] for i in B_paths]
-        
-        self.mkdir(image_dir)
-        print('Save training results in %s...' % image_dir)
-        
-        columns = 4
-        rows = 3
-        labels=['Real Image','Real Segmentation','Fake Segmentation']
-        fig,big_axes=plt.subplots(figsize=(15, 15),nrows=rows, ncols=1, sharey=True)
-        for row, big_ax in enumerate(big_axes, start=1):
-            if row==1:
-                big_ax.set_title("%s \n" % labels[row-1], fontsize=14)
-            else:
-                big_ax.set_title("%s" % labels[row-1], fontsize=14)
-            big_ax.set_xticks([])
-            big_ax.set_yticks([])
-            big_ax._frameon = False
-        for i in range(columns*rows):
-            fig.add_subplot(rows, columns, i+1)
-            plt.axis('off')
-            if i in range(4):
-                plt.title(short_pathA[i])
-                img=visuals['real_A'][:,:,i]
-                plt.imshow(img,cmap='gray')
-            elif i in range(4,8):
-                img=visuals['manual_B'][:,:,i-4]
-                plt.imshow(img,cmap='gray')
-            else:
-                img=visuals['seg_B'][:,:,i-8]
-                plt.imshow(img,cmap='gray')
-        plt.savefig(os.path.join(image_dir,str(epochs)+'_'+str(epoch_iter)+'_RealVsSegmented.pdf'))
-        plt.close()
-        
-        
-        
-        labels=['Real A','Fake B','Reconstructed A']
-        fig,big_axes=plt.subplots(figsize=(15, 15),nrows=rows, ncols=1, sharey=True)
-        for row, big_ax in enumerate(big_axes, start=1):
-            if row==1:
-                big_ax.set_title("%s \n" % labels[row-1], fontsize=14)
-            else:
-                big_ax.set_title("%s" % labels[row-1], fontsize=14)
-            big_ax.set_xticks([])
-            big_ax.set_yticks([])
-            big_ax._frameon = False
-        for i in range(columns*rows):
-            fig.add_subplot(rows, columns, i+1)
-            plt.axis('off')
-            if i in range(4):
-                plt.title(short_pathA[i])
-                img=visuals['real_A'][:,:,i]
-                plt.imshow(img,cmap='gray')
-            elif i in range(4,8):
-                img=visuals['fake_B'][:,:,i-4]
-                plt.imshow(img,cmap='gray')
-            else:
-                img=visuals['rec_A'][:,:,i-8]
-                plt.imshow(img,cmap='gray')
-        plt.savefig(os.path.join(image_dir,str(epochs)+'_'+str(epoch_iter)+'_RealAVsfakeB.pdf'))
-        plt.close()
-        
-        
-        labels=['Real B','Fake A','Reconstructed B']
-        fig,big_axes=plt.subplots(figsize=(15, 15),nrows=rows, ncols=1, sharey=True)
-        for row, big_ax in enumerate(big_axes, start=1):
-            if row==1:
-                big_ax.set_title("%s \n" % labels[row-1], fontsize=14)
-            else:
-                big_ax.set_title("%s" % labels[row-1], fontsize=14)
-            big_ax.set_xticks([])
-            big_ax.set_yticks([])
-            big_ax._frameon = False        
-        for i in range(columns*rows):
-            fig.add_subplot(rows, columns, i+1)
-            plt.axis('off')
-            if i in range(4):
-                plt.title(short_pathB[i])
-                img=visuals['real_B'][:,:,i]
-                plt.imshow(img,cmap='gray')
-            elif i in range(4,8):
-                img=visuals['fake_A'][:,:,i-4]
-                plt.imshow(img,cmap='gray')
-            else:
-                img=visuals['rec_B'][:,:,i-8]
-                plt.imshow(img,cmap='gray')
-        plt.savefig(os.path.join(image_dir,str(epochs)+'_'+str(epoch_iter)+'_RealBVsfakeA.pdf'))
-        plt.close()
-        
-
-# save image to the disk
-#image _dir: directory to save images
-#visuals: dictionary with images
-#
-    def save_current_imagesCyclegan(self, image_dir, visuals, A_paths,B_paths,epochs,epoch_iter):
-        short_pathA = [os.path.splitext(ntpath.basename(i))[0] for i in A_paths]
-        short_pathB = [os.path.splitext(ntpath.basename(i))[0] for i in B_paths]
-        
-        self.mkdir(image_dir)
-        print('Save training results in %s...' % image_dir)
-        
-        columns = 4
-        rows = 3
-                
-        labels=['Real A','Fake B','Reconstructed A']
-        fig,big_axes=plt.subplots(figsize=(15, 15),nrows=rows, ncols=1, sharey=True)
-        for row, big_ax in enumerate(big_axes, start=1):
-            if row==1:
-                big_ax.set_title("%s \n" % labels[row-1], fontsize=14)
-            else:
-                big_ax.set_title("%s" % labels[row-1], fontsize=14)
-            big_ax.set_xticks([])
-            big_ax.set_yticks([])
-            big_ax._frameon = False
-        for i in range(columns*rows):
-            fig.add_subplot(rows, columns, i+1)
-            plt.axis('off')
-            if i in range(4):
-                plt.title(short_pathA[i])
-                img=visuals['real_A'][:,:,i]
-                plt.imshow(img,cmap='gray')
-            elif i in range(4,8):
-                img=visuals['fake_B'][:,:,i-4]
-                plt.imshow(img,cmap='gray')
-            else:
-                img=visuals['rec_A'][:,:,i-8]
-                plt.imshow(img,cmap='gray')
-        plt.savefig(os.path.join(image_dir,str(epochs)+'_'+str(epoch_iter)+'_RealAVsfakeB.pdf'))
-        plt.close()
-        
-        
-        labels=['Real B','Fake A','Reconstructed B']
-        fig,big_axes=plt.subplots(figsize=(15, 15),nrows=rows, ncols=1, sharey=True)
-        for row, big_ax in enumerate(big_axes, start=1):
-            if row==1:
-                big_ax.set_title("%s \n" % labels[row-1], fontsize=14)
-            else:
-                big_ax.set_title("%s" % labels[row-1], fontsize=14)
-            big_ax.set_xticks([])
-            big_ax.set_yticks([])
-            big_ax._frameon = False        
-        for i in range(columns*rows):
-            fig.add_subplot(rows, columns, i+1)
-            plt.axis('off')
-            if i in range(4):
-                plt.title(short_pathB[i])
-                img=visuals['real_B'][:,:,i]
-                plt.imshow(img,cmap='gray')
-            elif i in range(4,8):
-                img=visuals['fake_A'][:,:,i-4]
-                plt.imshow(img,cmap='gray')
-            else:
-                img=visuals['rec_B'][:,:,i-8]
-                plt.imshow(img,cmap='gray')
-        plt.savefig(os.path.join(image_dir,str(epochs)+'_'+str(epoch_iter)+'_RealBVsfakeA.pdf'))
-        plt.close()
-
-
-
-    def save_cyclegan_images_to_dir(self, image_dir, visuals, image_path):
-        short_path = ntpath.basename(image_path[0])
-        name = os.path.splitext(short_path)[0]
-        full_path_strs = image_path[0].split('/')
-
-        save_dirFAKE = os.path.join(image_dir, full_path_strs[-2],'FakeImg')
-
-        self.mkdir(save_dirFAKE)
-
-        label = 'fake_Img'
-        image_numpyImg = visuals[label]
-        image_name = '%s_%s.nii.gz' % (name, self.translation)
-        save_pathImg= os.path.join(save_dirFAKE,image_name)
-        
-
-        if not os.path.exists(save_pathImg):
-            util.save_Nii(image_numpyImg, save_pathImg,image_path[0])
-
-
-    def save_seg_images_to_dir(self, image_dir, visuals, image_path):
-        short_path = ntpath.basename(image_path[0])
-        name = os.path.splitext(short_path)[0]
-        full_path_strs = image_path[0].split('/')
-
-        save_dirFAKE = os.path.join(image_dir, full_path_strs[-2],'FakeImg')
-        save_dirSEG = os.path.join(image_dir, full_path_strs[-2],'FakeSeg')
-
-        self.mkdir(save_dirFAKE)
-        self.mkdir(save_dirSEG)
-
-        label = 'fake_Seg'
-        image_numpySeg = visuals[label]
-        image_name = '%s_%s.nii.gz' % (name, label)
-        save_pathSeg = os.path.join(save_dirSEG,image_name)
-        
-        label = 'fake_Img'
-        image_numpyImg = visuals[label]
-        image_name = '%s_%s.nii.gz' % (name, self.translation)
-        save_pathImg= os.path.join(save_dirFAKE,image_name)
-        
-        
-        if not os.path.exists(save_pathSeg):
-            util.save_Nii(image_numpySeg, save_pathSeg,image_path[0])
-            
-        if not os.path.exists(save_pathImg):
-            util.save_Nii(image_numpyImg, save_pathImg,image_path[0])
-
+import math
 
 
 class VisualPlots():
@@ -426,7 +38,7 @@ class VisualPlots():
         plt.show()
         plt.savefig(os.path.join(self.opt.out_dir,'PartialResults_'+str(slices)+'_'+str(epoch)+'.pdf'))                
             
-    def save_Loss_Metrics(self, epoch_loss_values,val_loss_values, metric_values_tumor, best_metric_epoch,best_metric,metric_values_tc,metric_values_wt,metric_values_et,val_interval):
+    def save_Loss_MetricsBrats(self, epoch_loss_values,val_loss_values, metric_values_tumor, best_metric_epoch,best_metric,metric_values_tc,metric_values_wt,metric_values_et,val_interval):
         
         plt.figure("Loss and Dice", (12, 6))
         plt.subplot(1, 2, 1)
@@ -474,7 +86,82 @@ class VisualPlots():
         plt.show()
         #plt.savefig(os.path.join(self.opt.out_dir,str(best_metric_epoch)+'_'+str(best_metric)+'_TC-WT-ET_.pdf'))
         plt.savefig(os.path.join(self.opt.out_dir,'TC-WT-ET_.pdf'))
+        
 
+    def save_Loss_MetricsAMOS22(self, epoch_loss_values,metric_total,metric_values_organs,best_metric_epoch,best_metric,
+                          val_interval,organs={'0':'Background','1':'spleen','2':'right kidney', 
+                                  '3':'left kidney','4':'gallbladder','5':'esophagus','6':'liver','7':'stomach', 
+                                  '8':'aorta','9':'inferior vena cava','10':'pancreas','11':'right adrenal gland',
+                                  '12':'left adrenal gland','13':'duodenum','14':'bladder', '15':'prostate/uterus'}):
+        
+        plt.figure("Train", (12, 6))
+        plt.subplot(1, 2, 1)
+        plt.title("Epoch Average Loss")
+        x = [i + 1 for i in range(len(epoch_loss_values))]
+        y = epoch_loss_values
+        plt.xlabel("epoch")
+        plt.plot(x, y, color="red")
+        plt.subplot(1, 2, 2)
+        plt.title("Val Mean Dice")
+        x = [val_interval * (i + 1) for i in range(len(metric_total))]
+        y = metric_total
+        plt.xlabel("epoch")
+        plt.plot(x, y, color="green")
+        plt.show()
+        plt.savefig(os.path.join(self.opt.out_dir,str(best_metric_epoch)+'_'+str(best_metric)+'_LossVsVal.pdf'))
+        
+        fig=plt.figure(figsize=(12, 16))
+        columns = 6
+        rows = int(math.ceil(len(metric_values_organs[0])/6))        
+        for i in range(len(metric_values_organs[0])):
+            fig.add_subplot(rows, columns, i+1)
+            plt.title(organs[str(i)])
+            x = [val_interval * (j + 1) for j in range(len(metric_values_organs))]
+            y=[]
+            for numMetrics in metric_values_organs:
+                y.append(numMetrics[i].cpu().detach().numpy())
+            plt.xlabel("epoch")
+            plt.plot(x, y, color="red")
+            
+        plt.show()
+        plt.savefig(os.path.join(self.opt.out_dir,'Dice_per_organs.pdf'))
+
+
+
+    def save_Loss_Metrics(self, epoch_loss_values,val_loss_values, metric_values_tumor, val_interval):
+        
+        plt.figure("Loss and Dice", (12, 6))
+        plt.subplot(1, 3, 1)
+        plt.title("Epoch Average Loss")
+        x = [i + 1 for i in range(len(epoch_loss_values))]
+        y = epoch_loss_values
+        plt.xlabel("epoch")
+        plt.ylabel("loss")
+        plt.plot(x, y, color="red")
+        plt.yticks(np.arange(0, 1, step=0.1))  # Set label locations.
+        plt.subplot(1, 3, 2)
+        plt.title("Val Mean Dice")
+        x = [val_interval * (i + 1) for i in range(len(metric_values_tumor))]
+        y = metric_values_tumor
+        plt.xlabel("epoch")
+        plt.ylabel("Dice")
+        plt.plot(x, y, color="green")
+        plt.yticks(np.arange(0, 1, step=0.1))  # Set label locations.
+        plt.subplot(1, 3, 3)
+        plt.title("Epoch Average Train and val Loss")
+        x = [i + 1 for i in range(len(epoch_loss_values))]
+        y = epoch_loss_values
+        z = val_loss_values
+        plt.xlabel("epoch")
+        plt.ylabel("loss")
+        plt.plot(x, y, color="red",label='train')
+        plt.plot(x, z, color="blue",label='val')
+        plt.yticks(np.arange(0, 1, step=0.1))  # Set label locations.
+        plt.show()
+        #plt.savefig(os.path.join(self.opt.out_dir,str(best_metric_epoch)+'_'+str(best_metric)+'_LossVsDice.pdf'))
+        plt.savefig(os.path.join(self.opt.out_dir,'LossVsDice.pdf'))
+        
+    
         
     def save_Loss_MetricsHektor(self, epoch_loss_values,val_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor,HDistance, AVgSurfDis, val_interval):
         

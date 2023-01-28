@@ -4,6 +4,7 @@ from util import util
 import torch
 from util.visualizer import VisualPlots
 from util.nnUNetUtils import nnUNETPlanning
+from util.loggings import TensorboardLogger,WandbLogger,get_rank
 
 
 class BaseOptions():
@@ -39,7 +40,7 @@ class BaseOptions():
         self.parser.add_argument('--fold', type=int, default=0, help='choose number of fold used to train data')
         self.parser.add_argument('--n_splits', type=int, default=5, help='Number of splits for the cross-validation')
 
-        
+
 
     def parse(self):
         if not self.initialized:
@@ -132,13 +133,17 @@ class BaseOptions():
         val_interval = self.opt.val_interval
         Plots=VisualPlots(self.opt) #I will use to save some segmentation results. At the moment is only for plot loss curve
         
-        #create log_file or Wandb file
-        os.makedirs(self.opt.out_dir, exist_ok=True)
-        self.opt.log_writer = utils.TensorboardLogger(log_dir=self.opt.out_dir)
-        if self.opt.enable_wandb:
-            wandb_logger = utils.WandbLogger(opt)
+        global_rank = get_rank()
+        if global_rank == 0 and self.opt.out_dir is not None:
+            os.makedirs(os.path.join(self.opt.out_dir, 'logging'), exist_ok=True)
+            self.opt.log_writer = TensorboardLogger(log_dir=self.opt.out_dir)
         else:
-            wandb_logger = None
+            self.opt.log_writer = None
+
+        if global_rank == 0 and self.opt.enable_wandb:
+            self.opt.wandb_logger = WandbLogger(self.opt)
+        else:
+            self.opt.wandb_logger = None
         
         
         

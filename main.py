@@ -50,10 +50,7 @@ best_metric = -1
 best_metric_epoch = -1
 best_metrics_epochs_and_time = [[], [], []]
 metric_values_tumor = [] #DICE
-HDistance = []
-AVgSurfDis = []
-recall_values_tumor = []
-precision_values_tumor = []
+
 
 total_start = time.time()
     
@@ -128,31 +125,12 @@ for epoch in range(max_epochs):
             metric = trainConfig.Config.dice_metric.aggregate().item()
             metric_values_tumor.append(metric)
             
-            HD = trainConfig.Config.HausdorffDis.aggregate().item()
-            HDistance.append(HD)
-            
-            SurfDis = trainConfig.Config.SurfDis.aggregate().item()
-            AVgSurfDis.append(SurfDis)
-
-            Recall_Precision = trainConfig.Config.Recall_Precision.aggregate()
-            recall=Recall_Precision[0].item()
-            precision=Recall_Precision[1].item()
-            recall_values_tumor.append(recall)
-            precision_values_tumor.append(precision)
-
             trainConfig.Config.dice_metric.reset()
-            trainConfig.Config.Recall_Precision.reset()
-            trainConfig.Config.HausdorffDis.reset()
-            trainConfig.Config.SurfDis.reset()
 
 
 # monitoring only dice metrics
         if metric > best_metric:
             best_metric = metric
-            best_recall = recall
-            best_precision = precision
-            best_HD=HD
-            best_SurfDis=SurfDis
             best_metric_epoch = epoch + 1
             best_metrics_epochs_and_time[0].append(best_metric)
             best_metrics_epochs_and_time[1].append(best_metric_epoch)
@@ -160,21 +138,17 @@ for epoch in range(max_epochs):
             ####save best model
             save_model(epoch,model,trainConfig.Config.optimizer,loss,trainConfig.Config.scaler,trainConfig.Config.lr_scheduler,metric,os.path.join(root_dir,'BestCHK'+".pth"))
             print("saved new best Dice metric model",flush=True)
-            Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor,HDistance, AVgSurfDis,val_interval)
+            Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,val_interval)
         print(
             f"current epoch: {epoch + 1} current DICE: {metric:.5f}"
-            f" current Surface Distance: {SurfDis:.5f} "
-            f" current Hausdorff Distance: {HD:.5f} "
-            f" current recall: {recall:.5f} "
-            f" current precision: {precision:.5f} "
-            f"\nbest tumor dice: {best_metric:.5f} best Surface Distance: {best_SurfDis:.5f} best Hausdorff Distance: {best_HD:.5f} best recall: {best_recall:.5f} best precision: {best_precision:.5f}"
-               f" at epoch: {best_metric_epoch}",flush=True
+            f"\nbest tumor dice: {best_metric:.5f} "
+            f" at epoch: {best_metric_epoch}",flush=True
                )
-Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor, HDistance, AVgSurfDis,val_interval)
+Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,val_interval)
 save_model(epoch,model,trainConfig.Config.optimizer,loss,trainConfig.Config.scaler,trainConfig.Config.lr_scheduler,metric,os.path.join(root_dir,'lastCHK'+".pth"))
 print(f"time consuming of epoch {epoch + 1} is: {(time.time() - epoch_start):.5f}",flush=True)
 total_time = time.time() - total_start
-print(f"train completed, best_dice: {best_metric:.5f} - best_HD: {best_HD:.5f} - best_SurfDis: {best_SurfDis:.5f} at epoch: {best_metric_epoch}, total time: {total_time}.")
+print(f"train completed, best_dice: {best_metric:.5f} at epoch: {best_metric_epoch}, total time: {total_time}.")
 
 
 
