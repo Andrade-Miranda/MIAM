@@ -16,8 +16,8 @@ Created on Thu Oct 21 11:40:28 2021
 import torch
 from monai.losses import DiceCELoss
 from monai.inferers import sliding_window_inference
-from monai.metrics import DiceMetric,ConfusionMatrixMetric,HausdorffDistanceMetric,SurfaceDistanceMetric
-from nnunet.training.learning_rate.poly_lr import poly_lr
+from monai.metrics import DiceMetric
+from nnUNet.nnunet.training.learning_rate.poly_lr import poly_lr
 
 
 from monai.transforms import (

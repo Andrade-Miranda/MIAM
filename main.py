@@ -7,6 +7,9 @@ from data.data_loader import CreateDataLoader
 from config.train_setup import TrainSetup
 from models.models import create_model
 import time
+#import util.loggings
+from util.engine import train_one_epoch
+from timm.utils import ModelEma
 from monai.data import (
     decollate_batch
 )
@@ -17,18 +20,13 @@ from monai.utils import set_determinism
 ############# Load Options####################################################
 opt,root_dir,max_epochs,val_interval,Plots=TrainOptions().parse()
 
+#util.loggings.init_distributed_mode(opt)
+
 if opt.Deterministic:
-    seed=opt.seed
+    seed=opt.seed#+ util.loggings.get_rank()
     set_determinism(seed)
     np.random.seed(seed)
     random.seed(seed)
-"""------------------------------------------------------------"""
-# use cpu --gpu_ids -1, GPU --gpu_ids>=0
-if len(opt.gpu_ids) == 0:
-    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-"""------------------------------------------------------------"""
-##########################################################"
-
 
 #################TRAIN###################################"
 data_loader = CreateDataLoader(opt)
@@ -36,37 +34,63 @@ train_loader,val_loader,datalen = data_loader.load_data()
 print('#Datasize = %d: Training:%d   Validation:%d' % (len(data_loader),datalen[0],datalen[1]))
 ########################################################################################################
     
-""" Multiples GPU """ 
+""" --------load model --------------- """ 
 model = create_model(opt)
-"""---------------------"""
+model.to(opt.device)
 trainConfig=TrainSetup(opt,model)
 print('#Config Training scheme created')
+"""-----------------------------------"""
 
+""" -------- model ema --------------- """ 
+model_ema = None
+if opt.model_ema:
+    # Important to create EMA model after cuda(), DP wrapper, and AMP but before SyncBN and DDP wrapper
+    model_ema = ModelEma(
+        model,
+        decay=opt.model_ema_decay,
+        device='cpu' if opt.model_ema_force_cpu else '',
+        resume='')
+    print("Using EMA with decay = %.8f" % opt.model_ema_decay)
+model_without_ddp = model
+"""-----------------------------------"""
+num_training_steps_per_epoch =datalen[0]//opt.batchSize
+num_validation_steps_per_epoch =datalen[1]//opt.Val_batchSize  
+
+######Initialize metric variables##########
 epoch_loss_values = []
 val_loss_values = []
-
- 
 best_metric = -1
 best_metric_epoch = -1
 best_metrics_epochs_and_time = [[], [], []]
 metric_values_tumor = [] #DICE
-
-
+metric_total=[]
 total_start = time.time()
-    
-# now if this was a network training you would run epochs like this (remember tr_gen and val_gen generate
-# inifinite examples! Don't do "for batch in tr_gen:"!!!):
-num_batches_per_epoch =datalen[0]//opt.batchSize
-num_validation_batches_per_epoch =datalen[1]//opt.Val_batchSize    
-    
+########################################
+
+
 for epoch in range(max_epochs):
     epoch_start = time.time()
     print("-" * 10,flush=True)
     print(f"epoch {epoch + 1}/{max_epochs}",flush=True)
-    model.train()
     epoch_loss = 0
     step = 0
-    for batchIt in range(num_batches_per_epoch):
+    if opt.log_writer is not None:
+        opt.log_writer.set_step(epoch * num_training_steps_per_epoch * opt.update_freq)
+    if opt.wandb_logger:
+        opt.wandb_logger.set_steps()
+    
+    
+    train_stats = train_one_epoch(
+            model, trainConfig.Config.loss_function, train_loader, trainConfig.Config.optimizer,
+            opt.device, epoch, trainConfig.Config.scaler, opt.clip_grad, model_ema, mixup_fn=None,
+            log_writer=opt.log_writer, wandb_logger=opt.wandb_logger, start_steps=epoch * num_training_steps_per_epoch,
+            lr_schedule_values=trainConfig.Config.lr_scheduler, wd_schedule_values=None,
+            num_training_steps_per_epoch=num_training_steps_per_epoch, update_freq=opt.update_freq,
+            use_amp=opt.VAL_AMP
+        )
+    
+    
+    for batchIt in range(num_training_steps_per_epoch):
         step_start = time.time()
         step += 1
         batch_data = next(train_loader)
@@ -101,7 +125,7 @@ for epoch in range(max_epochs):
         stepval = 0
         model.eval()
         with torch.no_grad():#Context-manager that disabled gradient calculation.
-            for batchIt in range(num_validation_batches_per_epoch):
+            for batchIt in range(num_validation_steps_per_epoch):
                 stepval += 1
                 val_data = next(val_loader)
                 val_inputs,val_labels= (

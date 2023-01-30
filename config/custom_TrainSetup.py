@@ -17,7 +17,7 @@ def CreateTrainConfig(opt,model):
         Config = TransFuseConfig()
     elif opt.TrainConfig == 'nnUNetConfig': #nnUNEt setup
         from config.nnUNet_Config import nnUNetConfig
-        Config = nnUNet_Config() 
+        Config = nnUNetConfig() 
     elif opt.TrainConfig == 'TestConfig':#for test setup
         from config.Test_Config import TestConfig
         Config = TestConfig()   

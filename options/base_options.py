@@ -15,7 +15,9 @@ class BaseOptions():
     def initialize(self):
         self.parser.add_argument('--dataroot', type=str,default='Task001_BraTS2021', help='dataset path (Task001_Prostate, json file "./datasets/BraTS2021/dataset.json") or Folder with images, it will depend of the configuration')
         self.parser.add_argument('--Val_batchSize', type=int, default=2, help='validation batch size')
-        self.parser.add_argument('--batchSize', type=int, default=2, help='input batch size')
+        self.parser.add_argument('--val_interval', type=int, default=1, help='# interval to do the evaluation')
+        self.parser.add_argument('--update_freq', type=int, default=1, help='# gradient accumulation steps')
+        self.parser.add_argument('--batchSize', type=int, default=1, help='input batch size')
         self.parser.add_argument('--input_nc', type=int, default=4, help='# of input image channels')
         self.parser.add_argument('--output_nc', type=int, default=3, help='# of output image channels')
         self.parser.add_argument('--gpu_ids', type=str, default='-1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
@@ -58,10 +60,11 @@ class BaseOptions():
         #### device CPU or CUDA############
         if self.opt.gpu_ids =='-1':
             self.opt.device=torch.device("cpu") 
+            os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
         else: 
             self.opt.device=torch.device("cuda")
         ########################
-
+        
         str_ids = self.opt.gpu_ids.split(',')
         self.opt.gpu_ids = []
         for str_id in str_ids:
@@ -144,6 +147,8 @@ class BaseOptions():
             self.opt.wandb_logger = WandbLogger(self.opt)
         else:
             self.opt.wandb_logger = None
+        
+        
         
         
         

@@ -4,10 +4,10 @@ from .base_options import BaseOptions
 class TrainOptions(BaseOptions):
     def initialize(self):
         BaseOptions.initialize(self)
-        self.parser.add_argument('--val_interval', type=int, default=1, help='# data for val')
         self.parser.add_argument('--imageSize', nargs='+', default= 0, help='Image Size after pre-processing')
         self.parser.add_argument('--epochs', type=int, default=150, help='# of epochs')
         self.parser.add_argument('--VAL_AMP',  dest='VAL_AMP', action='store_true',default=False, help='Automatic Mixed Precision package - torch.cuda.amp')
+        self.parser.add_argument('--clip_grad', type=float, default=None, metavar='NORM',help='Clip gradient norm (default: None, no clipping)')
         self.parser.add_argument('--seed', type=int, default=12345, help='# of seed for deterministic training')
         self.parser.add_argument('--region', nargs='+', default=((1,4),(1,4,2),(4,)), help='segmentation regions to merge, default Brats')
         self.parser.add_argument('--patchSize', type=int, default=1, help='number of the patch for transformer network')
@@ -35,8 +35,14 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--dist_on_itp', action='store_true',dest='dist_on_itp', default=False)
         self.parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
         
+    # EMA related parameters
+        self.parser.add_argument('--model_ema', action='store_true', default=False)
+        self.parser.add_argument('--model_ema_decay', type=float, default=0.9999, help='')
+        self.parser.add_argument('--model_ema_force_cpu', action='store_true', default=False, help='')
+        self.parser.add_argument('--model_ema_eval', action='store_true', default=False, help='Using ema to eval during training.')
         
-        # Weights and Biases arguments
+        
+    # Weights and Biases arguments
         self.parser.add_argument('--enable_wandb',action='store_true', dest='enable_wandb', default=False,
                     help="enable logging to Weights and Biases")
         self.parser.add_argument('--project', default='MIAM', type=str,
