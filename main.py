@@ -9,13 +9,15 @@ from models.models import create_model
 import time
 #import util.loggings
 from util.engine import train_one_epoch
-from timm.utils import ModelEma
+from timm.utils import get_state_dict,ModelEma
+import json
+
+from util.loggings import save_on_master
+from monai.utils import set_determinism
+
 from monai.data import (
     decollate_batch
 )
-
-from util.util import save_model
-from monai.utils import set_determinism
 
 ############# Load Options####################################################
 opt,root_dir,max_epochs,val_interval,Plots=TrainOptions().parse()
@@ -28,15 +30,19 @@ if opt.Deterministic:
     np.random.seed(seed)
     random.seed(seed)
 
-#################TRAIN###################################"
+""" --------load Data --------------- """ 
 data_loader = CreateDataLoader(opt)
 train_loader,val_loader,datalen = data_loader.load_data()
 print('#Datasize = %d: Training:%d   Validation:%d' % (len(data_loader),datalen[0],datalen[1]))
-########################################################################################################
+num_training_steps_per_epoch =datalen[0]//opt.batchSize
+num_validation_steps_per_epoch =datalen[1]//opt.Val_batchSize  
+"""-----------------------------------"""
     
-""" --------load model --------------- """ 
+""" --------load model and config--------------- """ 
 model = create_model(opt)
 model.to(opt.device)
+n_parameters=sum(p.numel() for p in model.parameters() if p.requires_grad)
+opt.num_training_steps_per_epoch=num_training_steps_per_epoch
 trainConfig=TrainSetup(opt,model)
 print('#Config Training scheme created')
 """-----------------------------------"""
@@ -53,8 +59,7 @@ if opt.model_ema:
     print("Using EMA with decay = %.8f" % opt.model_ema_decay)
 model_without_ddp = model
 """-----------------------------------"""
-num_training_steps_per_epoch =datalen[0]//opt.batchSize
-num_validation_steps_per_epoch =datalen[1]//opt.Val_batchSize  
+
 
 ######Initialize metric variables##########
 epoch_loss_values = []
@@ -72,8 +77,7 @@ for epoch in range(max_epochs):
     epoch_start = time.time()
     print("-" * 10,flush=True)
     print(f"epoch {epoch + 1}/{max_epochs}",flush=True)
-    epoch_loss = 0
-    step = 0
+
     if opt.log_writer is not None:
         opt.log_writer.set_step(epoch * num_training_steps_per_epoch * opt.update_freq)
     if opt.wandb_logger:
@@ -81,44 +85,17 @@ for epoch in range(max_epochs):
     
     
     train_stats = train_one_epoch(
-            model, trainConfig.Config.loss_function, train_loader, trainConfig.Config.optimizer,
-            opt.device, epoch, trainConfig.Config.scaler, opt.clip_grad, model_ema, mixup_fn=None,
-            log_writer=opt.log_writer, wandb_logger=opt.wandb_logger, start_steps=epoch * num_training_steps_per_epoch,
-            lr_schedule_values=trainConfig.Config.lr_scheduler, wd_schedule_values=None,
-            num_training_steps_per_epoch=num_training_steps_per_epoch, update_freq=opt.update_freq,
-            use_amp=opt.VAL_AMP
+            model, trainConfig.Config.loss_function, train_loader, trainConfig.Config.optimizer,trainConfig,
+            epoch, trainConfig.Config.loss_scaler,opt.clip_grad,model_ema=model_ema,mixup_fn=None,start_steps=epoch * num_training_steps_per_epoch,
+            log_writer=opt.log_writer, wandb_logger=opt.wandb_logger, lr_schedule_values=trainConfig.Config.lr_scheduler,
+            num_training_steps_per_epoch=num_training_steps_per_epoch, 
+            update_freq=opt.update_freq,use_amp=opt.VAL_AMP,args=opt
         )
     
-    
-    for batchIt in range(num_training_steps_per_epoch):
-        step_start = time.time()
-        step += 1
-        batch_data = next(train_loader)
-        inputs, labels = (
-        batch_data["image"].to(opt.device),
-        batch_data["label"].to(opt.device),
-        ) 
-        
-        #print("Data batch: %s, %s" %(batch_data['keys'][0],batch_data['keys'][1]),flush=True)
-        trainConfig.Config.optimizer.zero_grad()#initialize optimizer
-        with torch.cuda.amp.autocast():
-            outputs = model(inputs)
-            loss = trainConfig.Config.loss_function(outputs, labels)
-        trainConfig.Config.scaler.scale(loss).backward()
-        trainConfig.Config.scaler.step(trainConfig.Config.optimizer)
-        trainConfig.Config.scaler.update()
-            
-        epoch_loss += loss.item()
-            
-        print(
-                f"{step}/{datalen[0] // opt.batchSize}"
-                f", train_loss: {loss.item():.5f}"
-                f", step time: {(time.time() - step_start):.5f}",flush=True
-                )
-    trainConfig.Config.lr_scheduler.step()
-    epoch_loss /= step
-    epoch_loss_values.append(epoch_loss)
-    print(f"epoch {epoch + 1} average loss: {epoch_loss:.5f} Learning rate: {trainConfig.Config.lr_scheduler.get_last_lr()[0]:.2e}",flush=True)
+    if opt.sched is not None:
+        trainConfig.Config.lr_scheduler.step(epoch)
+
+    epoch_loss_values.append(train_stats['loss'])
 
     if (epoch + 1) % val_interval == 0:
         val_loss_epoch=0
@@ -139,19 +116,19 @@ for epoch in range(max_epochs):
                 ## val metrics
                 val_outputs = [trainConfig.Config.post_trans(i) for i in decollate_batch(val_outputs)]
                 trainConfig.Config.dice_metric(y_pred=val_outputs, y=val_labels)
-                trainConfig.Config.Recall_Precision(y_pred=val_outputs, y=val_labels)
-                trainConfig.Config.HausdorffDis(y_pred=val_outputs, y=val_labels)
-                trainConfig.Config.SurfDis(y_pred=val_outputs, y=val_labels)
             
             val_loss_epoch /= stepval
             val_loss_values.append(val_loss_epoch)
             
             metric = trainConfig.Config.dice_metric.aggregate().item()
             metric_values_tumor.append(metric)
-            
             trainConfig.Config.dice_metric.reset()
-
-
+            
+            "-----------verify the cases of Model ema and lr_scheduler are None before saving checkpoints------"
+            mod_ema= get_state_dict(model_ema) if model_ema is not None else model_ema
+            scheduler=trainConfig.Config.lr_scheduler.state_dict() if trainConfig.Config.lr_scheduler is not None else trainConfig.Config.lr_scheduler
+            "-------------------------------------------------------------------------------------"
+            
 # monitoring only dice metrics
         if metric > best_metric:
             best_metric = metric
@@ -160,16 +137,55 @@ for epoch in range(max_epochs):
             best_metrics_epochs_and_time[1].append(best_metric_epoch)
             best_metrics_epochs_and_time[2].append(time.time() - total_start)
             ####save best model
-            save_model(epoch,model,trainConfig.Config.optimizer,loss,trainConfig.Config.scaler,trainConfig.Config.lr_scheduler,metric,os.path.join(root_dir,'BestCHK'+".pth"))
+            save_on_master({
+                        'model': model_without_ddp.state_dict(),
+                        'optimizer': trainConfig.Config.optimizer.state_dict(),
+                        'lr_scheduler': scheduler,
+                        'epoch': epoch,
+                        'model_ema': mod_ema,
+                        'scaler': trainConfig.Config.loss_scaler.state_dict(),
+                        #'args': opt
+                    }, os.path.join(root_dir,'BestCHK'+".pth"))
+            #save_model(epoch,model,trainConfig.Config.optimizer,loss,trainConfig.Config.scaler,trainConfig.Config.lr_scheduler,metric,os.path.join(root_dir,'BestCHK'+".pth"))
             print("saved new best Dice metric model",flush=True)
-            Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,val_interval)
+            Plots.save_Loss_Metrics(epoch_loss_values,val_loss_values, metric_values_tumor,val_interval)
         print(
             f"current epoch: {epoch + 1} current DICE: {metric:.5f}"
             f"\nbest tumor dice: {best_metric:.5f} "
             f" at epoch: {best_metric_epoch}",flush=True
-               )
-Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,val_interval)
-save_model(epoch,model,trainConfig.Config.optimizer,loss,trainConfig.Config.scaler,trainConfig.Config.lr_scheduler,metric,os.path.join(root_dir,'lastCHK'+".pth"))
+                )
+    
+    
+    log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                 #**{f'test_{k}': v for k, v in val_stats.items()},
+                 'epoch': epoch,
+                 'n_parameters': n_parameters}
+    
+    
+    if opt.log_writer is not None:
+        opt.log_writer.flush()
+    with open(os.path.join(opt.out_dir, 'logging', "log.txt"), mode="a", encoding="utf-8") as f:
+        f.write(json.dumps(log_stats) + "\n")
+
+    if opt.wandb_logger:
+        opt.wandb_logger.log_epoch_metrics(log_stats)
+
+if opt.wandb_logger and opt.wandb_ckpt:
+    opt.wandb_logger.log_checkpoints()
+
+        
+        
+Plots.save_Loss_Metrics(epoch_loss_values,val_loss_values, metric_values_tumor,val_interval)
+save_on_master({
+                 'model': model_without_ddp.state_dict(),
+                 'optimizer': trainConfig.Config.optimizer.state_dict(),
+                 'lr_scheduler': scheduler,
+                 'epoch': epoch,
+                 'model_ema': mod_ema,
+                 'scaler': trainConfig.Config.loss_scaler.state_dict()
+                        #'args': opt,
+                    }, os.path.join(root_dir,'LastCHK'+".pth"))
+#save_model(epoch,model,trainConfig.Config.optimizer,loss,trainConfig.Config.scaler,trainConfig.Config.lr_scheduler,metric,os.path.join(root_dir,'lastCHK'+".pth"))
 print(f"time consuming of epoch {epoch + 1} is: {(time.time() - epoch_start):.5f}",flush=True)
 total_time = time.time() - total_start
 print(f"train completed, best_dice: {best_metric:.5f} at epoch: {best_metric_epoch}, total time: {total_time}.")

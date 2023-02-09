@@ -28,7 +28,7 @@ class SmoothedValue(object):
 
     def __init__(self, window_size=20, fmt=None):
         if fmt is None:
-            fmt = "{median:.4f} ({global_avg:.4f})"
+            fmt = "{value:.4f} ({global_avg:.4f})"
         self.deque = deque(maxlen=window_size)
         self.total = 0.0
         self.count = 0
@@ -120,7 +120,7 @@ class MetricLogger(object):
     def add_meter(self, name, meter):
         self.meters[name] = meter
 
-    def log_every(self, iterable, print_freq,num_training_steps_per_epoch, header=None):
+    def log_every(self, num_training_steps_per_epoch,iterable,print_freq, header=None):
         i = 0
         if not header:
             header = ''
@@ -128,8 +128,7 @@ class MetricLogger(object):
         end = time.time()
         iter_time = SmoothedValue(fmt='{avg:.4f}')
         data_time = SmoothedValue(fmt='{avg:.4f}')
-        #space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
-        space_fmt = ':' + str(num_training_steps_per_epoch) + 'd'
+        space_fmt = ':' + str(len(str(num_training_steps_per_epoch))) + 'd'
         log_msg = [
             header,
             '[{0' + space_fmt + '}/{1}]',
@@ -142,26 +141,22 @@ class MetricLogger(object):
             log_msg.append('max mem: {memory:.0f}')
         log_msg = self.delimiter.join(log_msg)
         MB = 1024.0 * 1024.0
-        for obj in iterable:
+        for j in range(num_training_steps_per_epoch):
             data_time.update(time.time() - end)
-            yield obj
+            obj=next(iterable)
+            print(obj["keys"][0],obj["keys"][1])
+            yield j,obj
             iter_time.update(time.time() - end)
-            #if i % print_freq == 0 or i == len(iterable) - 1:
-            if i % print_freq == 0 or i == num_training_steps_per_epoch - 1:
-                #eta_seconds = iter_time.global_avg * (len(iterable) - i)
+            if i % print_freq == 0 or i == num_training_steps_per_epoch:
                 eta_seconds = iter_time.global_avg * (num_training_steps_per_epoch - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 if torch.cuda.is_available():
                     print(log_msg.format(
-                        i, len(iterable), eta=eta_string,
+                        i, num_training_steps_per_epoch, eta=eta_string,
                         meters=str(self),
                         time=str(iter_time), data=str(data_time),
                         memory=torch.cuda.max_memory_allocated() / MB))
                 else:
-                    #print(log_msg.format(
-                    #    i, len(iterable), eta=eta_string,
-                    #    meters=str(self),
-                    #    time=str(iter_time), data=str(data_time)))
                     print(log_msg.format(
                         i, num_training_steps_per_epoch, eta=eta_string,
                         meters=str(self),
@@ -170,11 +165,8 @@ class MetricLogger(object):
             end = time.time()
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-        #print('{} Total time: {} ({:.4f} s / it)'.format(
-        #    header, total_time_str, total_time / len(iterable)))
         print('{} Total time: {} ({:.4f} s / it)'.format(
             header, total_time_str, total_time / num_training_steps_per_epoch))
-
 
 class TensorboardLogger(object):
     def __init__(self, log_dir):
@@ -238,7 +230,7 @@ class WandbLogger(object):
             if 'train' in k:
                 self._wandb.log({f'Global Train/{k}': v}, commit=False)
             elif 'test' in k:
-                self._wandb.log({f'Global Test/{k}': v}, commit=False)
+                self._wandb.log({f'Global val/{k}': v}, commit=False)
 
         self._wandb.log({})
 
@@ -256,7 +248,7 @@ class WandbLogger(object):
         self._wandb.define_metric('Rank-0 Batch Wise/*', step_metric='Rank-0 Batch Wise/global_train_step')
         # Set epoch-wise step
         self._wandb.define_metric('Global Train/*', step_metric='epoch')
-        self._wandb.define_metric('Global Test/*', step_metric='epoch')
+        self._wandb.define_metric('Global val/*', step_metric='epoch')
 
 
 def setup_for_distributed(is_master):
@@ -433,6 +425,27 @@ def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
     else:
         total_norm = torch.norm(torch.stack([torch.norm(p.grad.detach(), norm_type).to(device) for p in parameters]), norm_type)
     return total_norm
+
+
+def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epochs=0,
+                     start_warmup_value=0, warmup_steps=-1):
+    warmup_schedule = np.array([])
+    warmup_iters = warmup_epochs * niter_per_ep
+    if warmup_steps > 0:
+        warmup_iters = warmup_steps
+    print("Set warmup steps = %d" % warmup_iters)
+    if warmup_epochs > 0:
+        warmup_schedule = np.linspace(start_warmup_value, base_value, warmup_iters)
+
+    iters = np.arange(epochs * niter_per_ep - warmup_iters)
+    schedule = np.array(
+        [final_value + 0.5 * (base_value - final_value) * (1 + math.cos(math.pi * i / (len(iters)))) for i in iters])
+
+    schedule = np.concatenate((warmup_schedule, schedule))
+
+    assert len(schedule) == epochs * niter_per_ep
+    return schedule
+
 
 def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, model_ema=None):
     output_dir = Path(args.output_dir)

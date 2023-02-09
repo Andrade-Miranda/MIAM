@@ -11,45 +11,42 @@ from typing import Iterable, Optional
 import torch
 from timm.data import Mixup
 from timm.utils import accuracy, ModelEma
+import sys
 
 import util.loggings 
 
+from monai.data import (
+    decollate_batch
+)
+
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
-                    data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, loss_scaler, max_norm: float = 0,
-                    model_ema: Optional[ModelEma] = None, mixup_fn: Optional[Mixup] = None, log_writer=None,
-                    wandb_logger=None, start_steps=None, lr_schedule_values=None, wd_schedule_values=None,
-                    num_training_steps_per_epoch=None, update_freq=None, use_amp=False):
+                    data_loader: Iterable, optimizer: torch.optim.Optimizer,trainConfig,
+                    epoch: int, loss_scaler, max_norm: float = 0,
+                    model_ema: Optional[ModelEma] = None, mixup_fn: Optional[Mixup] = None, start_steps=None,
+                    log_writer=None,wandb_logger=None, lr_schedule_values=None,
+                    num_training_steps_per_epoch=None, update_freq=None, use_amp=False,args=None):
     model.train(True)
     metric_logger = util.loggings.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', util.loggings.SmoothedValue(window_size=1, fmt='{value:.6f}'))
-    metric_logger.add_meter('min_lr', util.loggings.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     header = 'Epoch: [{}]'.format(epoch)
-    print_freq = 10
-
-    optimizer.zero_grad()
+    print_freq = 1
     
-    for data_iter_step in range(num_training_steps_per_epoch):
-    #for data_iter_step, (image,keys,label,properties) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        image,keys,label,properties =metric_logger.log_every(data_loader, print_freq,num_training_steps_per_epoch, header)
+
+    #for data_iter_step in range(num_training_steps_per_epoch):
+    for data_iter_step,batch_data in metric_logger.log_every(num_training_steps_per_epoch,data_loader, print_freq, header):
+        
         step = data_iter_step // update_freq
         if step >= num_training_steps_per_epoch:
             continue
         it = start_steps + step  # global training iteration
-        # Update LR & WD for the first acc
-        if lr_schedule_values is not None or wd_schedule_values is not None and data_iter_step % update_freq == 0:
-            for i, param_group in enumerate(optimizer.param_groups):
-                if lr_schedule_values is not None:
-                    param_group["lr"] = lr_schedule_values[it] * param_group["lr_scale"]
-                if wd_schedule_values is not None and param_group["weight_decay"] > 0:
-                    param_group["weight_decay"] = wd_schedule_values[it]
-
-        samples = image.to(device, non_blocking=True)
-        targets = label.to(device, non_blocking=True)
+        
+        samples = batch_data["image"].to(args.device, non_blocking=True)#image.to(device, non_blocking=True)
+        targets = batch_data["label"].to(args.device, non_blocking=True)#label.to(device, non_blocking=True)
+        #print(batch_data["keys"])
 
         if mixup_fn is not None:
             samples, targets = mixup_fn(samples, targets)
-
+            
         if use_amp:
             with torch.cuda.amp.autocast():
                 output = model(samples)
@@ -60,81 +57,51 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
         loss_value = loss.item()
 
-        if not math.isfinite(loss_value): # this could trigger if using AMP
+        if not math.isfinite(loss_value):
             print("Loss is {}, stopping training".format(loss_value))
-            assert math.isfinite(loss_value)
+            sys.exit(1)
 
-        if use_amp:
-            # this attribute is added by timm on one optimizer (adahessian)
-            is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
-            loss /= update_freq
-            grad_norm = loss_scaler(loss, optimizer, clip_grad=max_norm,
-                                    parameters=model.parameters(), create_graph=is_second_order,
-                                    update_grad=(data_iter_step + 1) % update_freq == 0)
-            if (data_iter_step + 1) % update_freq == 0:
-                optimizer.zero_grad()
-                if model_ema is not None:
-                    model_ema.update(model)
-        else: # full precision
-            loss /= update_freq
-            loss.backward()
-            if (data_iter_step + 1) % update_freq == 0:
-                optimizer.step()
-                optimizer.zero_grad()
-                if model_ema is not None:
-                    model_ema.update(model)
+        optimizer.zero_grad()
+
+        # this attribute is added by timm on one optimizer (adahessian)
+        is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
+        loss_scaler(loss, optimizer, clip_grad=max_norm,
+                    parameters=model.parameters(), create_graph=is_second_order)
+        
+        # train metrics
+        train_outputs = trainConfig.Config.inference(samples)
+        train_outputs = [trainConfig.Config.post_trans(i) for i in decollate_batch(train_outputs)]
+        trainConfig.Config.dice_metric(y_pred=train_outputs, y=targets)        
+        Dice_value = trainConfig.Config.dice_metric.aggregate().item()
 
         torch.cuda.synchronize()
+        if model_ema is not None:
+            model_ema.update(model)
 
-        if mixup_fn is None:
-            class_acc = (output.max(-1)[-1] == targets).float().mean()
-        else:
-            class_acc = None
         metric_logger.update(loss=loss_value)
-        metric_logger.update(class_acc=class_acc)
-        min_lr = 10.
-        max_lr = 0.
-        for group in optimizer.param_groups:
-            min_lr = min(min_lr, group["lr"])
-            max_lr = max(max_lr, group["lr"])
-
-        metric_logger.update(lr=max_lr)
-        metric_logger.update(min_lr=min_lr)
-        weight_decay_value = None
-        for group in optimizer.param_groups:
-            if group["weight_decay"] > 0:
-                weight_decay_value = group["weight_decay"]
-        metric_logger.update(weight_decay=weight_decay_value)
-        if use_amp:
-            metric_logger.update(grad_norm=grad_norm)
-
+        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+        metric_logger.update(Dice=Dice_value)
+ 
         if log_writer is not None:
             log_writer.update(loss=loss_value, head="loss")
-            log_writer.update(class_acc=class_acc, head="loss")
-            log_writer.update(lr=max_lr, head="opt")
-            log_writer.update(min_lr=min_lr, head="opt")
-            log_writer.update(weight_decay=weight_decay_value, head="opt")
-            if use_amp:
-                log_writer.update(grad_norm=grad_norm, head="opt")
+            log_writer.update(lr=optimizer.param_groups[0]["lr"], head="lr")
+            log_writer.update(Train_Dice=Dice_value, head="loss")
             log_writer.set_step()
 
         if wandb_logger:
             wandb_logger._wandb.log({
                 'Rank-0 Batch Wise/train_loss': loss_value,
-                'Rank-0 Batch Wise/train_max_lr': max_lr,
-                'Rank-0 Batch Wise/train_min_lr': min_lr
+                'Rank-0 Batch Wise/train_lr': optimizer.param_groups[0]["lr"],
+                'Rank-0 Batch Wise/train_Dice': Dice_value
             }, commit=False)
-            if class_acc:
-                wandb_logger._wandb.log({'Rank-0 Batch Wise/train_class_acc': class_acc}, commit=False)
-            if use_amp:
-                wandb_logger._wandb.log({'Rank-0 Batch Wise/train_grad_norm': grad_norm}, commit=False)
             wandb_logger._wandb.log({'Rank-0 Batch Wise/global_train_step': it})
-            
-
+        
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}       
+          
+
 
 @torch.no_grad()
 def evaluate(data_loader, model, device, use_amp=False):

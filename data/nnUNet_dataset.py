@@ -137,7 +137,7 @@ class nnUNetDataset(BaseDataset):
         default_2D_augmentation_params["mirror_axes"] = (0, 1)  # this can be (0, 1, 2) if dummy_2D=True
         
         if self.opt.Deterministic:##fix seed to always generate the same augmentation
-            self.seeds_train, self.seeds_val= [self.opt.seed for i in range(self.default_3D_augmentation_params.get('num_threads'))], [self.opt.seed for i in range(self.default_3D_augmentation_params.get('num_threads'))] ##fix seed to always generate the same augmentation
+            self.seeds_train, self.seeds_val= [self.opt.seed+i for i in range(self.default_3D_augmentation_params.get('num_threads'))], [self.opt.seed for i in range(self.default_3D_augmentation_params.get('num_threads'))] ##fix seed to always generate the same augmentation
         else:
             self.seeds_train, self.seeds_val= None, None 
            
@@ -285,8 +285,12 @@ class nnUNetDataset(BaseDataset):
         val_transforms = Compose(val_transforms)
 
         #batchgenerator_val = DataLoaderTest3D(self.dataset_val,self.val_transforms,self.opt.Val_batchSize)
+        if self.opt.Deterministic:
+            seeds=self.seeds_val[:int(max(params.get('num_threads') // 2, 1))]
+        else:
+            seeds=self.seeds_val
         batchgenerator_val = MultiThreadedAugmenter(dataloader_val, val_transforms, max(params.get('num_threads') // 2, 1),
-                                                    params.get("num_cached_per_thread"), seeds=self.seeds_val[:int(max(params.get('num_threads') // 2, 1))],
+                                                    params.get("num_cached_per_thread"), seeds=seeds,
                                                     pin_memory=pin_memory)
         
         return batchgenerator_train, batchgenerator_val

@@ -17,13 +17,13 @@ class BaseOptions():
         self.parser.add_argument('--Val_batchSize', type=int, default=2, help='validation batch size')
         self.parser.add_argument('--val_interval', type=int, default=1, help='# interval to do the evaluation')
         self.parser.add_argument('--update_freq', type=int, default=1, help='# gradient accumulation steps')
-        self.parser.add_argument('--batchSize', type=int, default=1, help='input batch size')
+        self.parser.add_argument('--batchSize', type=int, default=2, help='input batch size')
         self.parser.add_argument('--input_nc', type=int, default=4, help='# of input image channels')
         self.parser.add_argument('--output_nc', type=int, default=3, help='# of output image channels')
         self.parser.add_argument('--gpu_ids', type=str, default='-1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
         self.parser.add_argument('--name', type=str, default=None, help='name of the experiment. It decides where to store samples and models')
         self.parser.add_argument('--TrainConfig', type=str, default='BaseConfig',help='Configuration file that specify optimizers, metrics, lr schedule, etc')
-        self.parser.add_argument('--Deterministic', dest='Deterministic',action='store_false',default=True, help='if is True the Deterministic training for reproducibility')          
+        self.parser.add_argument('--Deterministic', dest='Deterministic',action='store_true',default=False, help='if is True the Deterministic training for reproducibility')          
         self.parser.add_argument('--loadsplit',  type=str, default=None,help='load custom splits saved in splits_plk file')  
         self.parser.add_argument('--checkpoints_dir', type=str, default=None, help='models are saved here, default is None meaning that files will save in ./checkpoints/TaskName')
         self.parser.add_argument('--display_id', type=int, default=1, help='Display final pdf results')#no used yet
@@ -42,7 +42,15 @@ class BaseOptions():
         self.parser.add_argument('--fold', type=int, default=0, help='choose number of fold used to train data')
         self.parser.add_argument('--n_splits', type=int, default=5, help='Number of splits for the cross-validation')
 
-
+    def str2None(self,v):
+        """
+        Converts string to None type; enables command line 
+        arguments in the format of '--arg1 true --arg2 false'
+        """
+        if v.lower() in ('none', 'NONE', 'NoNE','None'):
+            return None
+        else:
+            return v
 
     def parse(self):
         if not self.initialized:
@@ -93,7 +101,8 @@ class BaseOptions():
             self.opt.imageSize=CurrentPlan['plans_per_stage'][self.opt.stage]['patch_size']
         '-------------'
                 
-
+        self.opt.sched=self.str2None(self.opt.sched)
+        
         print('------------ Options -------------')
         for k, v in sorted(self.args.items()):
             print('%s: %s' % (str(k), str(v)))
@@ -139,7 +148,7 @@ class BaseOptions():
         global_rank = get_rank()
         if global_rank == 0 and self.opt.out_dir is not None:
             os.makedirs(os.path.join(self.opt.out_dir, 'logging'), exist_ok=True)
-            self.opt.log_writer = TensorboardLogger(log_dir=self.opt.out_dir)
+            self.opt.log_writer = TensorboardLogger(log_dir=os.path.join(self.opt.out_dir, 'logging'))
         else:
             self.opt.log_writer = None
 

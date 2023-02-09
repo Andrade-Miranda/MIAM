@@ -30,7 +30,7 @@ class BaseConfig():
 
     def LoadConfig(self):
         
-        self.optimizer = Novograd(self.model.parameters(), lr=self.opt.lr)#torch.optim.AdamW(self.model.parameters(), lr=self.opt.lr, weight_decay=1e-5)
+        self.optimizer = Novograd(self.model.parameters(), lr=self.opt.lr)#torch.optim.AdamW(self.model.parameters(), lr=self.opt.lr, weight_decay=self.opt.weight_decay)#
         self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=int(self.opt.epochs*0.2),eta_min=1e-5)
         self.scaler = torch.cuda.amp.GradScaler()
         self.post_trans = Compose(

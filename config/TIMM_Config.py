@@ -6,13 +6,13 @@ Created on Thu Oct 21 11:40:28 2021
 @author: gustavo
 """
 import torch
-from monai.losses import DiceCELoss,DiceFocalLoss
+from monai.losses import DiceCELoss
 from monai.inferers import sliding_window_inference
-from monai.metrics import DiceMetric,ConfusionMatrixMetric
+from monai.metrics import DiceMetric
+
+from timm.utils import NativeScaler
 from timm.scheduler import create_scheduler
 from timm.optim import create_optimizer
-from monai.optimizers import Novograd
-from timm.utils import NativeScaler
 
 from monai.transforms import (
         Activations,
@@ -30,32 +30,45 @@ class TIMMConfig():
         return "Brats config"
     
     def LoadConfig(self):
-        self.loss_function = DiceFocalLoss(smooth_nr=0, smooth_dr=1e-5, squared_pred=True, to_onehot_y=False, sigmoid=True)
-        self.optimizer = Novograd(self.model.parameters(), lr=self.opt.lr, weight_decay=self.opt.weight_decay)
-        self.loss_scaler=NativeScaler()
-        self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.opt.epochs)
+        
+        self.optimizer = create_optimizer(
+            self.opt, self.model)
+        
+        self.loss_scaler = NativeScaler() # if args.use_amp is False, this won't be used
+
+        if self.opt.sched is not None:
+            self.lr_scheduler, _ =create_scheduler(self.opt, self.optimizer)
+        else:
+            self.lr_scheduler=None
+
 
         self.post_trans = Compose(
-                [Activations(sigmoid=True), AsDiscrete(threshold_values=True)]
+                [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
             )
+        
+        #metrics
         self.dice_metric = DiceMetric(include_background=True, reduction="mean")
-        self.dice_EMAmetric = DiceMetric(include_background=True, reduction="mean")
-        
-        self.Recall_Precision=ConfusionMatrixMetric(include_background=True,metric_name=('sensitivity','precision'),reduction="mean")
-        
+        self.dice_metric_batch = DiceMetric(include_background=True, reduction="mean_batch")                
+        self.loss_function = DiceCELoss(smooth_nr=0, smooth_dr=1e-5, squared_pred=False, to_onehot_y=False, sigmoid=True)
 
+        
     # define inference method
     def inference(self,input):
         def _compute(input):
+         
             return sliding_window_inference(
-                inputs=input,
-                roi_size=self.opt.imageSize,
-                sw_batch_size=1,
-                predictor=self.model,
-                overlap=0.5,
-                )
+                    inputs=input,
+                    roi_size=self.opt.imageSize,
+                    sw_batch_size=self.opt.Val_batchSize,
+                    predictor=self.model,
+                    overlap=0.5,
+                    )
+                
         if self.opt.VAL_AMP:
             with torch.cuda.amp.autocast():
                 return _compute(input)
         else:
             return _compute(input)
+
+    def name(self):
+        return "TIMMConfig"

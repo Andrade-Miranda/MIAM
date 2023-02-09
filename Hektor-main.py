@@ -85,7 +85,7 @@ for epoch in range(max_epochs):
         batch_data["label"].to(opt.device),
         ) 
         
-        #print("Data batch: %s, %s" %(batch_data['keys'][0],batch_data['keys'][1]),flush=True)
+        print("Data batch: %s, %s" %(batch_data['keys'][0],batch_data['keys'][1]),flush=True)
         trainConfig.Config.optimizer.zero_grad()#initialize optimizer
         with torch.cuda.amp.autocast():
             outputs = model(inputs)
@@ -165,7 +165,7 @@ for epoch in range(max_epochs):
             best_metrics_epochs_and_time[1].append(best_metric_epoch)
             best_metrics_epochs_and_time[2].append(time.time() - total_start)
             ####save best model
-            save_model(epoch,model,trainConfig.Config.optimizer,loss,metric,os.path.join(root_dir,'BestCHK'+".pth"))
+            save_model(epoch,model,trainConfig.Config.optimizer,loss,trainConfig.Config.scaler.scale,trainConfig.Config.lr_scheduler,metric,os.path.join(root_dir,'BestCHK'+".pth"))
             print("saved new best Dice metric model",flush=True)
             Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor,HDistance, AVgSurfDis,val_interval)
         print(
@@ -178,7 +178,7 @@ for epoch in range(max_epochs):
                f" at epoch: {best_metric_epoch}",flush=True
                )
 Plots.save_Loss_MetricsHektor(epoch_loss_values,val_loss_values, metric_values_tumor,recall_values_tumor,precision_values_tumor, HDistance, AVgSurfDis,val_interval)
-save_model(epoch,model,trainConfig.Config.optimizer,loss,metric,os.path.join(root_dir,'lastCHK'+".pth"))
+save_model(epoch,model,trainConfig.Config.optimizer,loss,trainConfig.Config.scaler.scale,trainConfig.Config.lr_scheduler,metric,os.path.join(root_dir,'lastCHK'+".pth"))
 print(f"time consuming of epoch {epoch + 1} is: {(time.time() - epoch_start):.5f}",flush=True)
 total_time = time.time() - total_start
 print(f"train completed, best_dice: {best_metric:.5f} - best_HD: {best_HD:.5f} - best_SurfDis: {best_SurfDis:.5f} at epoch: {best_metric_epoch}, total time: {total_time}.")
