@@ -64,11 +64,13 @@ if __name__=='__main__':
         imagesTr=os.path.join(last_folder,'imagesTr')
         labelsTr=os.path.join(last_folder,'labelsTr')
         for fname in os.listdir(os.path.join(opt.root_dir,'imagesTr')):
+            name=fname.split('_')
+            fname=name[0]+'_'+name[1]+'.nii.gz'
             if not fname.startswith('.') and not fname.endswith('csv'):
                 array_of_dictTr.append({"image":os.path.join(imagesTr,fname),"label":os.path.join(labelsTr,fname)})
         JSONFile["numTraining"]=len(array_of_dictTr) 
         JSONFile['training']=array_of_dictTr
-
+        JSONFile['test']=[]
         
     elif opt.option==1:
         imagesTr=os.path.join(last_folder,'imagesTr')

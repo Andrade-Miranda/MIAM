@@ -13,7 +13,7 @@
 #    limitations under the License.
 
 
-from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
+from nnUNet.nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
 
 
 class nnUNetTrainerV2_fp32(nnUNetTrainerV2):

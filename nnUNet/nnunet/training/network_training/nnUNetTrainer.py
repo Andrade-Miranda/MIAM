@@ -420,7 +420,7 @@ class nnUNetTrainer(NetworkTrainer):
         :param input_files:
         :return:
         """
-        from nnunet.training.model_restore import recursive_find_python_class
+        from nnUNet.nnunet.training.model_restore import recursive_find_python_class
         preprocessor_name = self.plans.get('preprocessor_name')
         if preprocessor_name is None:
             if self.threeD:
@@ -429,10 +429,10 @@ class nnUNetTrainer(NetworkTrainer):
                 preprocessor_name = "PreprocessorFor2D"
 
         print("using preprocessor", preprocessor_name)
-        preprocessor_class = recursive_find_python_class([join(nnunet.__path__[0], "preprocessing")],
+        preprocessor_class = recursive_find_python_class([join(nnUNet.nnunet.__path__[0], "preprocessing")],
                                                          preprocessor_name,
-                                                         current_module="nnunet.preprocessing")
-        assert preprocessor_class is not None, "Could not find preprocessor %s in nnunet.preprocessing" % \
+                                                         current_module="nnUNet.nnunet.preprocessing")
+        assert preprocessor_class is not None, "Could not find preprocessor %s in nnUNet.nnunet.preprocessing" % \
                                                preprocessor_name
         preprocessor = preprocessor_class(self.normalization_schemes, self.use_mask_for_norm,
                                           self.transpose_forward, self.intensity_properties)

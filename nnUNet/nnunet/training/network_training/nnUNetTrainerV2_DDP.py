@@ -24,20 +24,20 @@ import torch
 import torch.distributed as dist
 from batchgenerators.utilities.file_and_folder_operations import maybe_mkdir_p, join, subfiles, isfile, load_pickle, \
     save_json
-from nnunet.configuration import default_num_threads
-from nnunet.evaluation.evaluator import aggregate_scores
-from nnunet.inference.segmentation_export import save_segmentation_nifti_from_softmax
-from nnunet.network_architecture.neural_network import SegmentationNetwork
-from nnunet.postprocessing.connected_components import determine_postprocessing
-from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
-from nnunet.training.dataloading.dataset_loading import unpack_dataset
-from nnunet.training.loss_functions.crossentropy import RobustCrossEntropyLoss
-from nnunet.training.loss_functions.dice_loss import get_tp_fp_fn_tn
-from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
-from nnunet.utilities.distributed import awesome_allgather_function
-from nnunet.utilities.nd_softmax import softmax_helper
-from nnunet.utilities.tensor_utilities import sum_tensor
-from nnunet.utilities.to_torch import to_cuda, maybe_to_torch
+from nnUNet.nnunet.configuration import default_num_threads
+from nnUNet.nnunet.evaluation.evaluator import aggregate_scores
+from nnUNet.nnunet.inference.segmentation_export import save_segmentation_nifti_from_softmax
+from nnUNet.nnunet.network_architecture.neural_network import SegmentationNetwork
+from nnUNet.nnunet.postprocessing.connected_components import determine_postprocessing
+from nnUNet.nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
+from nnUNet.nnunet.training.dataloading.dataset_loading import unpack_dataset
+from nnUNet.nnunet.training.loss_functions.crossentropy import RobustCrossEntropyLoss
+from nnUNet.nnunet.training.loss_functions.dice_loss import get_tp_fp_fn_tn
+from nnUNet.nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
+from nnUNet.nnunet.utilities.distributed import awesome_allgather_function
+from nnUNet.nnunet.utilities.nd_softmax import softmax_helper
+from nnUNet.nnunet.utilities.tensor_utilities import sum_tensor
+from nnUNet.nnunet.utilities.to_torch import to_cuda, maybe_to_torch
 from torch import nn, distributed
 from torch.backends import cudnn
 from torch.cuda.amp import autocast

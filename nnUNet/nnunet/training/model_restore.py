@@ -56,8 +56,8 @@ def restore_model(pkl_file, checkpoint=None, train=False, fp16=None):
     info = load_pickle(pkl_file)
     init = info['init']
     name = info['name']
-    search_in = join(nnunet.__path__[0], "training", "network_training")
-    tr = recursive_find_python_class([search_in], name, current_module="nnunet.training.network_training")
+    search_in = join( nnUNet.nnunet.__path__[0], "training", "network_training")
+    tr = recursive_find_python_class([search_in], name, current_module="nnUNet.nnunet.training.network_training")
 
     if tr is None:
         """
@@ -149,7 +149,7 @@ def load_model_and_checkpoint_files(folder, folds=None, mixed_precision=None, ch
 
 
 if __name__ == "__main__":
-    pkl = "/home/fabian/PhD/results/nnUNetV2/nnUNetV2_3D_fullres/Task004_Hippocampus/fold0/model_best.model.pkl"
+    pkl = "/home/gustavo/Code/Git_workspace/MIAM/nnUNet/data/nnUnet_trained_models/nnUNet/model_best.model.pkl"#"/home/fabian/PhD/results/nnUNetV2/nnUNetV2_3D_fullres/Task004_Hippocampus/fold0/model_best.model.pkl"
     checkpoint = pkl[:-4]
     train = False
     trainer = restore_model(pkl, checkpoint, train)

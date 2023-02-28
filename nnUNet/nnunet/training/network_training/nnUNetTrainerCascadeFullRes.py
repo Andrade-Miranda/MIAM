@@ -17,17 +17,17 @@ from multiprocessing.pool import Pool
 from time import sleep
 
 import matplotlib
-from nnunet.postprocessing.connected_components import determine_postprocessing
-from nnunet.training.data_augmentation.default_data_augmentation import get_default_augmentation
-from nnunet.training.dataloading.dataset_loading import DataLoader3D, unpack_dataset
-from nnunet.evaluation.evaluator import aggregate_scores
-from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
-from nnunet.network_architecture.neural_network import SegmentationNetwork
-from nnunet.paths import network_training_output_dir
-from nnunet.inference.segmentation_export import save_segmentation_nifti_from_softmax
+from nnUNet.nnunet.postprocessing.connected_components import determine_postprocessing
+from nnUNet.nnunet.training.data_augmentation.default_data_augmentation import get_default_augmentation
+from nnUNet.nnunet.training.dataloading.dataset_loading import DataLoader3D, unpack_dataset
+from nnUNet.nnunet.evaluation.evaluator import aggregate_scores
+from nnUNet.nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
+from nnUNet.nnunet.network_architecture.neural_network import SegmentationNetwork
+from nnUNet.nnunet.paths import network_training_output_dir
+from nnUNet.nnunet.inference.segmentation_export import save_segmentation_nifti_from_softmax
 from batchgenerators.utilities.file_and_folder_operations import *
 import numpy as np
-from nnunet.utilities.one_hot_encoding import to_one_hot
+from nnUNet.nnunet.utilities.one_hot_encoding import to_one_hot
 import shutil
 
 matplotlib.use("agg")

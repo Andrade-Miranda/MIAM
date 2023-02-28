@@ -33,10 +33,10 @@ class TestConfig():
         
         if self.opt.dataset_mode=='MeanEnsemb':
             self.post_trans = Activations(sigmoid=True)
-            self.postLast=AsDiscrete(threshold_values=True)
+            self.postLast=AsDiscrete(threshold=0.5)
         else:
             self.post_trans = Compose(
-                [Activations(sigmoid=True), AsDiscrete(threshold_values=True)]
+                [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
         )
 
     # define inference method
@@ -48,6 +48,7 @@ class TestConfig():
                 sw_batch_size=self.opt.Val_batchSize,
                 predictor=self.model,
                 overlap=0.5,
+                mode='gaussian'
                 )
         if self.opt.VAL_AMP:
             with torch.cuda.amp.autocast():

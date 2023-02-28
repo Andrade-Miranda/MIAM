@@ -16,19 +16,19 @@
 from multiprocessing.pool import Pool
 from time import sleep
 import matplotlib
-from nnunet.configuration import default_num_threads
-from nnunet.postprocessing.connected_components import determine_postprocessing
-from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
-from nnunet.training.dataloading.dataset_loading import DataLoader3D, unpack_dataset
-from nnunet.evaluation.evaluator import aggregate_scores
-from nnunet.network_architecture.neural_network import SegmentationNetwork
-from nnunet.paths import network_training_output_dir
-from nnunet.inference.segmentation_export import save_segmentation_nifti_from_softmax
+from nnUNet.nnunet.configuration import default_num_threads
+from nnUNet.nnunet.postprocessing.connected_components import determine_postprocessing
+from nnUNet.nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
+from nnUNet.nnunet.training.dataloading.dataset_loading import DataLoader3D, unpack_dataset
+from nnUNet.nnunet.evaluation.evaluator import aggregate_scores
+from nnUNet.nnunet.network_architecture.neural_network import SegmentationNetwork
+from nnUNet.nnunet.paths import network_training_output_dir
+from nnUNet.nnunet.inference.segmentation_export import save_segmentation_nifti_from_softmax
 from batchgenerators.utilities.file_and_folder_operations import *
 import numpy as np
-from nnunet.training.loss_functions.deep_supervision import MultipleOutputLoss2
-from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
-from nnunet.utilities.one_hot_encoding import to_one_hot
+from nnUNet.nnunet.training.loss_functions.deep_supervision import MultipleOutputLoss2
+from nnUNet.nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
+from nnUNet.nnunet.utilities.one_hot_encoding import to_one_hot
 import shutil
 
 from torch import nn

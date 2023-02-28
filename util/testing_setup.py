@@ -12,7 +12,7 @@ from config.train_setup import TrainSetup
 from models.models import create_model
 from copy import deepcopy
 from argparse import Namespace
-from util.metrics import metricStatistics
+#from util.metrics import metricStatistics
 
 from data.data_loader import CreateDataLoader
 from monai.data import (
@@ -159,7 +159,11 @@ def load_trainingSetup(file_name,args,numiter):
         else:
             lista.append(('region_class_order',None))
             lista.append(('isbrats',False))
-            
+        
+        lista.append(('input_folder',args.input_folder))
+        lista.append(('num_threads_preprocessing',args.num_threads_preprocessing))
+        lista.append(('num_threads_nifti_save',args.num_threads_nifti_save))
+        
         opt=dict(lista)
         if opt['encoder'] in ['VIT_n','VIT_s','VIT_m','MVIT_n','MVIT_s','MVIT_m','CNN+VIT2Stream','SegResNetVAE','SegResNet','UNETR','Unet','SwinTrans3D','MCNN_h']:
             opt['hybrid']=False
@@ -213,18 +217,21 @@ def Mode_NCrossval(args,opt,output_folder):#### need to be updated
         data_loader = CreateDataLoader(opt[i])
         testConfig=TrainSetup(opt[i],model)
         test_loader = data_loader.load_test()
+        model.eval()
         with torch.no_grad():#Context-manager that disabled gradient calculation.
-            for batchIt in range(len(data_loader)):
-                val_data = next(test_loader)
-                val_inputs,properties_dict= (
-                        val_data["image"].to(opt[0].device),
-                        val_data["properties"])
+            for preprocessed in test_loader:
+                output_filename, (val_data, dct) = preprocessed
+                if isinstance(val_data, str):
+                    data = np.load(val_data)
+                    os.remove(val_data)
+                    val_data= data
+                val_inputs=torch.from_numpy(val_data)[None,...].to(opt[i].device)
                 val_outputs = testConfig.Config.inference(val_inputs)
                 val_outputs = testConfig.Config.post_trans(val_outputs[0])
           
-                out_fname=join(output_folder[i],val_data['keys'][0]+'.nii.gz')
+                out_fname=output_filename
                 save_segmentation_nifti_from_softmax(val_outputs, out_fname,
-                                         properties_dict, order=1,
+                                         dct, order=1,
                                          region_class_order= opt[i].region_class_order,
                                          seg_postprogess_fn= None, seg_postprocess_args= None,
                                          resampled_npz_fname= None,
@@ -232,7 +239,6 @@ def Mode_NCrossval(args,opt,output_folder):#### need to be updated
                                          interpolation_order_z= 0, verbose= True,isbrats=opt[i].isbrats)
            
                 del val_outputs
-                del val_data
                 torch.cuda.empty_cache()             
 
 
@@ -349,26 +355,26 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
 
     # first resample, then put result into bbox of cropping, then save
     current_shape = segmentation_softmax.shape
-    shape_original_after_cropping = properties_dict[0].get('size_after_cropping')
-    shape_original_before_cropping = properties_dict[0].get('original_size_of_raw_data')
+    shape_original_after_cropping = properties_dict.get('size_after_cropping')
+    shape_original_before_cropping = properties_dict.get('original_size_of_raw_data')
     # current_spacing = dct.get('spacing_after_resampling')
     # original_spacing = dct.get('original_spacing')
 
     if np.any([i != j for i, j in zip(np.array(current_shape[1:]), np.array(shape_original_after_cropping))]):
         if force_separate_z is None:
-            if get_do_separate_z(properties_dict[0].get('original_spacing')):
+            if get_do_separate_z(properties_dict.get('original_spacing')):
                 do_separate_z = True
-                lowres_axis = get_lowres_axis(properties_dict[0].get('original_spacing'))
-            elif get_do_separate_z(properties_dict[0].get('spacing_after_resampling')):
+                lowres_axis = get_lowres_axis(properties_dict.get('original_spacing'))
+            elif get_do_separate_z(properties_dict.get('spacing_after_resampling')):
                 do_separate_z = True
-                lowres_axis = get_lowres_axis(properties_dict[0].get('spacing_after_resampling'))
+                lowres_axis = get_lowres_axis(properties_dict.get('spacing_after_resampling'))
             else:
                 do_separate_z = False
                 lowres_axis = None
         else:
             do_separate_z = force_separate_z
             if do_separate_z:
-                lowres_axis = get_lowres_axis(properties_dict[0].get('original_spacing'))
+                lowres_axis = get_lowres_axis(properties_dict.get('original_spacing'))
             else:
                 lowres_axis = None
 
@@ -394,7 +400,7 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
         save_pickle(properties_dict, resampled_npz_fname[:-4] + ".pkl")
 
     if region_class_order is None:
-        seg_old_spacing = seg_old_spacing[0].detach().cpu().numpy()# i did ya argmax
+        seg_old_spacing = seg_old_spacing[0]#.detach().cpu().numpy()# i did ya argmax
     else:
         seg_old_spacing_final = np.zeros(seg_old_spacing.shape[1:])
         if isbrats:
@@ -408,7 +414,7 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
              #   seg_old_spacing_final[seg_old_spacing.detach().cpu().numpy()[i] > 0.5] = c
             #seg_old_spacing = seg_old_spacing_final
 
-    bbox = properties_dict[0].get('crop_bbox')
+    bbox = properties_dict.get('crop_bbox')
 
     if bbox is not None:
         seg_old_size = np.zeros(shape_original_before_cropping)
@@ -426,9 +432,9 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
         seg_old_size_postprocessed = seg_old_size
 
     seg_resized_itk = sitk.GetImageFromArray(seg_old_size_postprocessed.astype(np.uint8))
-    seg_resized_itk.SetSpacing(properties_dict[0]['itk_spacing'])
-    seg_resized_itk.SetOrigin(properties_dict[0]['itk_origin'])
-    seg_resized_itk.SetDirection(properties_dict[0]['itk_direction'])
+    seg_resized_itk.SetSpacing(properties_dict['itk_spacing'])
+    seg_resized_itk.SetOrigin(properties_dict['itk_origin'])
+    seg_resized_itk.SetDirection(properties_dict['itk_direction'])
     sitk.WriteImage(seg_resized_itk, out_fname)
 
     if (non_postprocessed_fname is not None) and (seg_postprogess_fn is not None):
