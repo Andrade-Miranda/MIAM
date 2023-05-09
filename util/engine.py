@@ -90,10 +90,10 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
         if wandb_logger:
             wandb_logger._wandb.log({
-                'Rank-0 Batch Wise/train_loss': loss_value,
-                'Rank-0 Batch Wise/train_lr': optimizer.param_groups[0]["lr"],
-                'Rank-0 Batch Wise/train_Dice': Dice_value
-            }, commit=False)
+                    'Rank-0 Batch Wise/train_loss': loss_value,
+                    'Rank-0 Batch Wise/train_lr': optimizer.param_groups[0]["lr"],
+                    'Rank-0 Batch Wise/train_Dice': Dice_value
+                    }, commit=False)
             wandb_logger._wandb.log({'Rank-0 Batch Wise/global_train_step': it})
         
     # gather the stats from all processes

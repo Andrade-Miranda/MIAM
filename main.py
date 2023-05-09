@@ -47,6 +47,8 @@ trainConfig=TrainSetup(opt,model)
 print('#Config Training scheme created')
 """-----------------------------------"""
 
+
+
 """ -------- model ema --------------- """ 
 model_ema = None
 if opt.model_ema:
