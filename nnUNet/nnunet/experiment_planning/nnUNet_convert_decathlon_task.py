@@ -17,9 +17,9 @@ import sys
 sys.path.append('../../')
 
 from batchgenerators.utilities.file_and_folder_operations import *
-from nnunet.configuration import default_num_threads
-from nnunet.experiment_planning.utils import split_4d
-from nnunet.utilities.file_endings import remove_trailing_slash
+from nnUNet.nnunet.configuration import default_num_threads
+from nnUNet.nnunet.experiment_planning.utils import split_4d
+from nnUNet.nnunet.utilities.file_endings import remove_trailing_slash
 
 
 def crawl_and_remove_hidden_from_decathlon(folder):

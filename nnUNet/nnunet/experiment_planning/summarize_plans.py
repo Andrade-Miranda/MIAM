@@ -13,7 +13,7 @@
 #    limitations under the License.
 
 from batchgenerators.utilities.file_and_folder_operations import *
-from nnunet.paths import preprocessing_output_dir
+from nnUNet.nnunet.paths import preprocessing_output_dir
 
 
 # This file is intended to double check nnUNets design choices. It is intended to be used for developent purposes only

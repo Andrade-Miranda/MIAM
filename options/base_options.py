@@ -4,7 +4,12 @@ from util import util
 import torch
 from util.visualizer import VisualPlots
 from util.nnUNetUtils import nnUNETPlanning
-from util.loggings import TensorboardLogger,WandbLogger,get_rank
+from torch.utils.tensorboard import SummaryWriter
+from util.loggings import WandbLogger,get_rank
+import numpy as np
+import wandb
+#os.environ["WANDB_MODE"]="offline"
+
 
 
 class BaseOptions():
@@ -14,8 +19,9 @@ class BaseOptions():
 
     def initialize(self):
         self.parser.add_argument('--dataroot', type=str,default='Task001_BraTS2021', help='dataset path (Task001_Prostate, json file "./datasets/BraTS2021/dataset.json") or Folder with images, it will depend of the configuration')
-        self.parser.add_argument('--Val_batchSize', type=int, default=2, help='validation batch size')
+        self.parser.add_argument('--Val_batchSize', type=int, default=1, help='validation batch size')
         self.parser.add_argument('--val_interval', type=int, default=1, help='# interval to do the evaluation')
+        self.parser.add_argument('--validate_min_epoch', type=int, default=1, help='# value to start the evaluation')
         self.parser.add_argument('--update_freq', type=int, default=1, help='# gradient accumulation steps')
         self.parser.add_argument('--batchSize', type=int, default=2, help='input batch size')
         self.parser.add_argument('--input_nc', type=int, default=4, help='# of input image channels')
@@ -27,7 +33,7 @@ class BaseOptions():
         self.parser.add_argument('--loadsplit',  type=str, default=None,help='load custom splits saved in splits_plk file')  
         self.parser.add_argument('--checkpoints_dir', type=str, default=None, help='models are saved here, default is None meaning that files will save in ./checkpoints/TaskName')
         self.parser.add_argument('--display_id', type=int, default=1, help='Display final pdf results')#no used yet
-        self.parser.add_argument('--yh_run_model', type=str, default='Train', help='chooses which Train or Test')#no used yet by the moment test and training has different scripts
+        self.parser.add_argument('--yh_run_model', type=str, default='Train',choices=('Train','Continue'), help='chooses which Train or continue')#no used yet by the moment test and training has different scripts
         self.parser.add_argument('--dataset_mode', type=str, default='nnUNet', help='choose the dataset mode to load the data, by default BRATS')
         self.parser.add_argument('--output_dir', type=str, default=None, help='save test segmentatio output results here, default is None meaning that files will save in ./Output/TaskName')
         self.parser.add_argument('--.', type=int, default=0, help='custom_sub_dir')
@@ -59,7 +65,7 @@ class BaseOptions():
         
         
         #### Train o test ############
-        if self.opt.yh_run_model=='Train':
+        if self.opt.yh_run_model=='Train' or self.opt.yh_run_model=='Continue':
             self.opt.isTrain = True   # test is not available yet
         else:
             self.opt.isTrain = False
@@ -89,16 +95,17 @@ class BaseOptions():
         CurrentPlan=planner.load_my_plans()
         #take always FULLRES
         self.opt.stage=len(CurrentPlan['plans_per_stage'])-1
-        self.opt.planning_stage='nnUNetData_plans_v2.1_stage'+str(self.opt.stage)
-        
+        if len(self.opt.plan.split('_'))>3:
+            self.opt.planning_stage='nnUNetData_plans_v2.1_'+self.opt.plan.split('_')[1]+'_stage'+str(self.opt.stage)
+        else:
+            self.opt.planning_stage='nnUNetData_plans_v2.1_stage'+str(self.opt.stage)
+
         self.opt.num_pool_per_axis=CurrentPlan['plans_per_stage'][self.opt.stage]['num_pool_per_axis']
         self.opt.pool_op_kernel_sizes=CurrentPlan['plans_per_stage'][self.opt.stage]['pool_op_kernel_sizes'] 
         self.opt.conv_kernel_sizes=CurrentPlan['plans_per_stage'][self.opt.stage]['conv_kernel_sizes']
            
-        if self.opt.imageSize!=0:
-            pass
-        else:
-            self.opt.imageSize=CurrentPlan['plans_per_stage'][self.opt.stage]['patch_size']
+        if self.opt.imageSize==0:
+            self.opt.imageSize=CurrentPlan['plans_per_stage'][self.opt.stage]['patch_size'].tolist()
         '-------------'
                 
         self.opt.sched=self.str2None(self.opt.sched)
@@ -113,7 +120,7 @@ class BaseOptions():
         if self.opt.name is None:
             self.opt.name=self.opt.encoder+'F'+str(self.opt.fold)
             
-        self.opt.imageSize=[int(self.opt.imageSize[i]) for i in range(len(self.opt.imageSize))]
+        #self.opt.imageSize=[int(self.opt.imageSize[i]) for i in range(len(self.opt.imageSize))]
         self.opt.filters_Encoder=tuple([int(self.opt.filters_Encoder[i]) for i in range(len(self.opt.filters_Encoder))])
         if self.opt.region[0]!='None' and self.opt.dataroot!='Task001_BraTS2021':
             self.opt.region=tuple([tuple([int(i) for i in x.split(',')]) if len(x)>1 else (int(x),) for x in self.opt.region])
@@ -147,13 +154,15 @@ class BaseOptions():
         
         global_rank = get_rank()
         if global_rank == 0 and self.opt.out_dir is not None:
-            os.makedirs(os.path.join(self.opt.out_dir, 'logging'), exist_ok=True)
-            self.opt.log_writer = TensorboardLogger(log_dir=os.path.join(self.opt.out_dir, 'logging'))
+            log_dir=os.makedirs(os.path.join(self.opt.out_dir, 'logging'), exist_ok=True)
+            self.opt.log_writer = SummaryWriter(log_dir=log_dir)
         else:
             self.opt.log_writer = None
 
         if global_rank == 0 and self.opt.enable_wandb:
-            self.opt.wandb_logger = WandbLogger(self.opt)
+            dir_wandb=os.makedirs(os.path.join('wandb'), exist_ok=True)
+            self.opt.wandb_logger = wandb.init(project=self.opt.project,config=self.opt,name=self.opt.nameRun,
+                                      dir=dir_wandb)
         else:
             self.opt.wandb_logger = None
         

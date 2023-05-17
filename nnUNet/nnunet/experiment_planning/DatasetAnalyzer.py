@@ -22,6 +22,7 @@ import pickle
 from nnUNet.nnunet.preprocessing.cropping import get_patient_identifiers_from_cropped_files
 from skimage.morphology import label
 from collections import OrderedDict
+import json
 
 
 class DatasetAnalyzer(object):
@@ -138,7 +139,7 @@ class DatasetAnalyzer(object):
         for c in self.patient_identifiers:
             properties = self.load_properties_of_cropped(c)
             sizes.append(properties["size_after_cropping"])
-            spacings.append(properties["original_spacing"])
+            spacings.append(properties["original_spacing"].tolist())
 
         return sizes, spacings
 
@@ -253,4 +254,8 @@ class DatasetAnalyzer(object):
         dataset_properties['size_reductions'] = size_reductions  # {patient_id: size_reduction}
 
         save_pickle(dataset_properties, join(self.folder_with_cropped_data, "dataset_properties.pkl"))
+        with open(join(self.folder_with_cropped_data, "dataset_properties.json"), 'w') as fp:
+            json.dump(dataset_properties, fp, indent=4)
+
+
         return dataset_properties

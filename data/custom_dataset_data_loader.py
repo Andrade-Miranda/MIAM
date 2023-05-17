@@ -30,9 +30,9 @@ class CustomDatasetDataLoader(BaseDataLoader):
         self.dataset = CreateDataset(opt)
         
     def load_data(self):
-        self.train_loader,self.val_loader=self.dataset.LoadData()
+        self.train_loader,self.val_loader,self.test_loader=self.dataset.LoadData()
         self.datalen=self.dataset.lengthData()
-        return self.train_loader,self.val_loader,self.datalen
+        return self.train_loader,self.val_loader,self.test_loader,self.datalen
     
     def load_test(self):
         self.test_loader=self.dataset.LoadData()

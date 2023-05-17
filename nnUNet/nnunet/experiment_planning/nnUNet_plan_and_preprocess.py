@@ -13,10 +13,12 @@
 #    limitations under the License.
 
 import sys
-# appending a path
-sys.path.append('../../../')
-
+from pathlib import Path
 import os
+# appending a path
+#sys.path.append('../../../')
+sys.path.append(os.path.abspath(Path(os.getcwd()) / Path('MIAM')))
+
 import nnUNet.nnunet
 from batchgenerators.utilities.file_and_folder_operations import *
 from nnUNet.nnunet.experiment_planning.DatasetAnalyzer import DatasetAnalyzer
@@ -103,7 +105,8 @@ def main():
     for i in task_ids:
         i = int(i)
         
-        os.chdir("../../../")# change current directory
+        #os.chdir("../../../")# change current directory
+        os.chdir(os.getcwd()+"/MIAM")
         task_name = convert_id_to_task_name(i)
 
         if args.verify_dataset_integrity:
@@ -114,10 +117,13 @@ def main():
         tasks.append(task_name)
 
     #search_in = join(nnUNet.__path__[0], "experiment_planning")
-    search_in = join('./nnUNet/nnunet', "experiment_planning")
+    search_in=[]
+    search_in.append(join('./nnUNet/nnunet', "experiment_planning")) 
+    search_in.append(join('./nnUNet/nnunet', "alternative_experiment_planning")) 
+    
 
     if planner_name3d is not None:
-        planner_3d = recursive_find_python_class([search_in], planner_name3d, current_module="nnUNet.nnunet.experiment_planning")
+        planner_3d = recursive_find_python_class(search_in, planner_name3d, current_module="nnUNet.nnunet.experiment_planning")
         if planner_3d is None:
             raise RuntimeError("Could not find the Planner class %s. Make sure it is located somewhere in "
                                "nnUNet.nnunet.experiment_planning" % planner_name3d)
@@ -149,6 +155,7 @@ def main():
 
         maybe_mkdir_p(preprocessing_output_dir_this_task)
         shutil.copy(join(cropped_out_dir, "dataset_properties.pkl"), preprocessing_output_dir_this_task)
+        shutil.copy(join(cropped_out_dir, "dataset_properties.json"), preprocessing_output_dir_this_task)
         shutil.copy(join(nnUNet_raw_data, t, "dataset.json"), preprocessing_output_dir_this_task)
 
         threads = (tl, tf)

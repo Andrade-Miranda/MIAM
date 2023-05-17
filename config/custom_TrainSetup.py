@@ -9,6 +9,9 @@ def CreateTrainConfig(opt,model):
     elif opt.TrainConfig == 'TIMMConfig':#for training using TIMM library
         from config.TIMM_Config import TIMMConfig
         Config = TIMMConfig()
+    elif opt.TrainConfig == 'PICAIConfig':#for training using TIMM library
+        from config.PICAI_Config import PICAIConfig
+        Config = PICAIConfig()
     elif opt.TrainConfig == 'ContrastConfig':#for training using contrastive loss
         from config.Contrastive_Config import ContrastiveConfig
         Config = ContrastiveConfig()

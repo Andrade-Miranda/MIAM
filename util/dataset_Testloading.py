@@ -189,7 +189,7 @@ class DataLoaderTest3D(SlimDataLoaderBase):
         self.list_of_keys = list(self._data.keys())
         # need_to_pad denotes by how much we need to pad the data so that if we sample a patch of size final_patch_size
         # (which is what the network will get) these patches will also cover the border of the patients
-        self.need_to_pad = (np.array([128,128,128]) - np.array([128,128,128])).astype(int)#dummy values to avoid padding since is causing problem
+        self.need_to_pad = (np.array([128,128,128]) - np.array([128,128,128])).astype(int)#dummy values to avoid padding since is causing problem (np.array(patch_size) - np.array(final_patch_size)).astype(int)
         if pad_sides is not None:
             if not isinstance(pad_sides, np.ndarray):
                 pad_sides = np.array(pad_sides)
@@ -561,8 +561,7 @@ if __name__ == "__main__":
     with open(join(join(preprocessing_output_dir, t), "plans_stage1.pkl"), 'rb') as f:
         plans = pickle.load(f)
     unpack_dataset(p)
-    dl = DataLoader3D(dataset, (32, 32, 32), (32, 32, 32), 2, oversample_foreground_percent=0.33)
-    dl = DataLoader3D(dataset, np.array(plans['patch_size']).astype(int), np.array(plans['patch_size']).astype(int), 2,
+    dl = DataLoaderTest3D(dataset, (32, 32, 32), (32, 32, 32), 2, oversample_foreground_percent=0.33)
+    dl = DataLoaderTest3D(dataset, np.array(plans['patch_size']).astype(int), np.array(plans['patch_size']).astype(int), 2,
                       oversample_foreground_percent=0.33)
-    dl2d = DataLoader2D(dataset, (64, 64), np.array(plans['patch_size']).astype(int)[1:], 12,
-                        oversample_foreground_percent=0.33)
+

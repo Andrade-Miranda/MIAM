@@ -25,7 +25,7 @@ import os
 from copy import deepcopy
 from sklearn.model_selection import KFold
 from collections import OrderedDict
-
+import json
 
 import numpy as np
 from batchgenerators.transforms.abstract_transforms import AbstractTransform
@@ -137,7 +137,7 @@ class nnUNetDataset(BaseDataset):
         default_2D_augmentation_params["mirror_axes"] = (0, 1)  # this can be (0, 1, 2) if dummy_2D=True
         
         if self.opt.Deterministic:##fix seed to always generate the same augmentation
-            self.seeds_train, self.seeds_val= [self.opt.seed+i for i in range(self.default_3D_augmentation_params.get('num_threads'))], [self.opt.seed for i in range(self.default_3D_augmentation_params.get('num_threads'))] ##fix seed to always generate the same augmentation
+            self.seeds_train, self.seeds_val= [self.opt.seed+i for i in range(self.default_3D_augmentation_params.get('num_threads'))], [self.opt.seed+i for i in range(self.default_3D_augmentation_params.get('num_threads'))] ##fix seed to always generate the same augmentation
         else:
             self.seeds_train, self.seeds_val= None, None 
            
@@ -150,7 +150,7 @@ class nnUNetDataset(BaseDataset):
         
         #default setting nnUNET dataloading
         self.pad_all_sides = None
-        self.oversample_foreground_percent = 0.33
+        self.oversample_foreground_percent = 0.5
         
         
         #check if I have to fuse region, this is particular useful for brats dataset
@@ -284,16 +284,17 @@ class nnUNetDataset(BaseDataset):
         val_transforms.append(NumpyToTensor(['image', 'label'], 'float'))
         val_transforms = Compose(val_transforms)
 
-        #batchgenerator_val = DataLoaderTest3D(self.dataset_val,self.val_transforms,self.opt.Val_batchSize)
+        batchgenerator_test = DataLoaderTest3D(self.dataset_val,val_transforms,self.opt.Val_batchSize)
         if self.opt.Deterministic:
             seeds=self.seeds_val[:int(max(params.get('num_threads') // 2, 1))]
         else:
             seeds=self.seeds_val
         batchgenerator_val = MultiThreadedAugmenter(dataloader_val, val_transforms, max(params.get('num_threads') // 2, 1),
-                                                    params.get("num_cached_per_thread"), seeds=seeds,
+                                                   params.get("num_cached_per_thread"), seeds=seeds,
                                                     pin_memory=pin_memory)
+
         
-        return batchgenerator_train, batchgenerator_val
+        return batchgenerator_train, batchgenerator_val,batchgenerator_test
 
 
     def do_split(self,dataset,fold):
@@ -327,9 +328,15 @@ class nnUNetDataset(BaseDataset):
                 with open(splits_file, "wb") as fout:
                     pickle.dump(splits, fout, protocol=-1)
                     #save_pickle(splits, splits_file)
-                    
-        with open(splits_file, "rb") as f:
-            splits = pickle.load(f)
+        try: # accept .pkl or .json file for splitting data
+            if self.opt.loadsplit.split('.')[-1]=='pkl':            
+                with open(splits_file, "rb") as f:
+                    splits = pickle.load(f)
+            elif self.opt.loadsplit.split('.')[-1]=='json':
+                with open(splits_file, "rb") as f:
+                    splits = json.load(f)
+        except ValueError:
+                print ('Not a valid file')
 
         if self.fold == "all":
             tr_keys = val_keys = list(dataset.keys())
@@ -381,11 +388,11 @@ class nnUNetDataset(BaseDataset):
         
         #dval = DataLoader3D(self.dataset_val, np.array(plans['plans_per_stage'][0]['median_patient_size_in_voxels']), np.array(plans['plans_per_stage'][0]['median_patient_size_in_voxels']), self.opt.Val_batchSize)
         #tr, val = self.get_default_augmentation(dtran, np.array(self.opt.imageSize).astype(int))
-        tr, val = self.get_default_augmentation(dtran,dl_val, np.array(self.opt.imageSize).astype(int))
+        tr, val,test = self.get_default_augmentation(dtran,dl_val, np.array(self.opt.imageSize).astype(int))
         
-        self.train_loader, self.val_loader=tr, val
+        self.train_loader, self.val_loader, self.test_loader=tr, val,test # test loader is not the test set is only used for the last epoch to have a real validation
         
-        return self.train_loader, self.val_loader
+        return self.train_loader, self.val_loader,self.test_loader
     
     def __len__(self):
         return len(self.dataset_tr)+len(self.dataset_val)

@@ -4,8 +4,9 @@ from .base_options import BaseOptions
 class TrainOptions(BaseOptions):
     def initialize(self):
         BaseOptions.initialize(self)
-        self.parser.add_argument('--imageSize', nargs='+', default= 0, help='Image Size after pre-processing')
+        self.parser.add_argument('--imageSize', type=int, nargs=3, default= 0, help='Image Size after pre-processing')
         self.parser.add_argument('--epochs', type=int, default=300, help='# of epochs')
+        self.parser.add_argument('--num_training_steps_per_epoch', type=int, default=100, help='# of steps per epoch')
         self.parser.add_argument('--VAL_AMP',  dest='VAL_AMP', action='store_true',default=False, help='Automatic Mixed Precision package - torch.cuda.amp')
         self.parser.add_argument('--seed', type=int, default=12345, help='# of seed for deterministic training')
         self.parser.add_argument('--region', nargs='+', default=((1,4),(1,4,2),(4,)), help='segmentation regions to merge, default Brats')
@@ -42,6 +43,7 @@ class TrainOptions(BaseOptions):
                         help='SGD momentum (default: 0.9)')
         self.parser.add_argument('--weight_decay', type=float, default=0.05,
                         help='weight decay (default: 0.05)')
+        self.parser.add_argument('--amsgrad', dest='amsgrad',action='store_true', default=False,help='amsgrad (default: False)')
         self.parser.add_argument('--weight_decay_end', type=float, default=None, help="""Final value of the
         weight decay. We use a cosine schedule for WD and using a larger decay by
         the end of training improves performance for ViTs.""")
@@ -49,15 +51,15 @@ class TrainOptions(BaseOptions):
     # Learning rate schedule parameters
         self.parser.add_argument('--sched', default='cosine', type=str, metavar='SCHEDULER',
                         help='LR scheduler (default: "cosine"')
-        self.parser.add_argument('--lr', type=float, default=2e-3, metavar='LR',
-                        help='learning rate (default: 5e-4)')
+        self.parser.add_argument('--lr', type=float, default=2e-4, metavar='LR',
+                        help='learning rate (default: 2e-4)')
         self.parser.add_argument('--lr-noise', type=float, nargs='+', default=None, metavar='pct, pct',
                         help='learning rate noise on/off epoch percentages')
         self.parser.add_argument('--lr-noise-pct', type=float, default=0.67, metavar='PERCENT',
                         help='learning rate noise limit percent (default: 0.67)')
         self.parser.add_argument('--lr-noise-std', type=float, default=1.0, metavar='STDDEV',
                         help='learning rate noise std-dev (default: 1.0)')
-        self.parser.add_argument('--warmup-lr', type=float, default=2e-3, metavar='LR',
+        self.parser.add_argument('--warmup-lr', type=float, default=1e-6, metavar='LR',
                         help='warmup learning rate (default: 1e-6)')
         self.parser.add_argument('--min-lr', type=float, default=1e-5, metavar='LR',
                         help='lower lr bound for cyclic schedulers that hit 0 (1e-5)')
@@ -68,6 +70,8 @@ class TrainOptions(BaseOptions):
                         help='epoch interval to decay LR')
         self.parser.add_argument('--warmup-epochs', type=int, default=3, metavar='N',
                         help='epochs to warmup LR, if scheduler supports')
+        self.parser.add_argument('--lr_cycle_limit', type=int, default=1, metavar='N',
+                        help='number maximun of cycles')
         self.parser.add_argument('--cooldown-epochs', type=int, default=10, metavar='N',
                         help='epochs to cooldown LR at min_lr, after cyclic schedule ends')
         self.parser.add_argument('--patience-epochs', type=int, default=10, metavar='N',
@@ -92,10 +96,12 @@ class TrainOptions(BaseOptions):
     # Weights and Biases arguments
         self.parser.add_argument('--enable_wandb',action='store_true', dest='enable_wandb', default=False,
                     help="enable logging to Weights and Biases")
-        self.parser.add_argument('--project', default='MIAM', type=str,
+        self.parser.add_argument('--project', default='csPcATransformer', type=str,
                     help="The name of the W&B project where you're sending the new run.")
         self.parser.add_argument('--wandb_ckpt', action='store_true',dest='wandb_ckpt', default=False,
                        help="Save model checkpoints as W&B Artifacts.")
+        self.parser.add_argument('--nameRun', default='UNETR', type=str,
+                    help="The name of the new run.")
 
 ####################OPTION AVAILABLE only with config contrastive###################################""""        
         self.parser.add_argument('--lambdaCNN', type=float, default=1e-1, help='lambda contrastive CNN')

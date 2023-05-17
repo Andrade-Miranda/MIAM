@@ -81,6 +81,8 @@ class ExperimentPlanner(object):
     def save_my_plans(self):
         with open(self.plans_fname, 'wb') as f:
             pickle.dump(self.plans, f)
+        #with open(self.plans_fname.split('.pkl')[0]+'.json', 'w') as fp:
+        #    json.dump(self.plans, fp, indent=4)
 
     def load_my_plans(self):
         self.plans = load_pickle(self.plans_fname)
