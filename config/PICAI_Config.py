@@ -14,7 +14,7 @@ import json
 
 
 from timm.utils import NativeScaler
-from timm.scheduler import create_scheduler
+from timm.scheduler import create_scheduler_v2
 from timm.optim import create_optimizer
 import pandas as pd
 
@@ -65,7 +65,15 @@ class PICAIConfig():
         self.loss_function = FocalLoss(alpha=self.class_weights[-1], gamma=1).to(self.opt.device)
 
         if self.opt.sched is not None:
-            self.lr_scheduler, _ =create_scheduler(self.opt, self.optimizer)
+            num_epochs=self.opt.epochs
+            num_epoch_repeat = num_epochs//2
+            num_steps_per_epoch = self.opt.num_training_steps_per_epoch
+            self.lr_scheduler, _ =create_scheduler_v2(self.optimizer,
+                                                        sched=self.opt.sched,
+                                                        num_epochs=num_epoch_repeat,
+                                                        min_lr=self.opt.min_lr,
+                                                        updates_per_epoch=num_steps_per_epoch,
+                                                        step_on_epochs=False,)
         else:
             self.lr_scheduler=None
 

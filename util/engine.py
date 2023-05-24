@@ -163,7 +163,6 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
 
     train_loss, step = 0,  0
     start_time = time.time()
-    key=[]
     epoch = tracking_metrics['epoch']
     if  args.enable_wandb: 
         wandb_logger.log({"epoch":epoch})
@@ -186,39 +185,35 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
             loss = loss_func(outputs, labels[:, 0, ...].long())   
         train_loss += loss.item()
 
-        key += [batch_data["keys"]]
-
         # backpropagate + optimize
         optimizer.zero_grad()
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
-        
-        #loss.backward()
-        #optimizer.step()
-        
-        if  args.enable_wandb:
-            wandb_logger.log({"train/loss":loss.item()})
+        lrupdate=optimizer.param_groups[0]['lr']
 
-        # define each training epoch == 100 steps (note: nnU-Net uses 250 steps)
+        if  args.enable_wandb:
+            wandb_logger.log({"train/loss_step":loss.item(),
+                              "learning_rate":np.round(lrupdate, 10)})
+
+        # learning rate update and setup
+        if args.sched is not None:
+            lr_scheduler.step_update(num_updates=step)
+            print(f"Learning Rate Updated! New Value: {lrupdate:.10}", flush=True)
+        else:
+            print(f"Learning Rate fix: {lrupdate:.10}", flush=True)
+            
         if step >= args.num_training_steps_per_epoch: 
             break
-
-    # update learning rate
-    if args.sched is not None:
-        lr_sched=str(np.round(lr_scheduler._get_lr(epoch)[-1]))
-    else:
-        lr_sched=str(args.lr)
-    print("Learning Rate Updated! New Value: "+lr_sched, flush=True)
 
     # track training metrics
     train_loss /= step
     tracking_metrics['train_loss'] = train_loss
     writer.add_scalar("train_loss", train_loss, epoch+1)
     
-    if  args.enable_wandb:
+    #if  args.enable_wandb:
         #log train_loss averaged over epoch, updated_lr and epoch  to wandb
-        wandb_logger.log({"train/loss_epoch":train_loss, 'learning_rate':np.round(np.float16(lr_sched), 10),'epoch':epoch})
+    #    wandb_logger.log({"train/loss_epoch":train_loss})
     
     print("-" * 100)
     print(f"Epoch {epoch + 1}/{args.epochs} (Train. Loss: {train_loss:.4f}; \
@@ -344,9 +339,9 @@ def validate_model(model, loss_func,optimizer,post_trans, valid_gen, args, track
                           "valid_dice":tracking_metrics['all_valid_metrics_Dice'][-1],
                           "valid_ranking":valid_metrics.score,
                           "roc" : wandb.plot.roc_curve(list(valid_metrics.case_target.values()),prediction ,
-                            labels=['no tumor','tumor'],classes_to_plot=1),
+                            labels=['no tumor','tumor'],classes_to_plot=1,title='ROC Val'),
                           "pr":wandb.plot.pr_curve(list(valid_metrics.case_target.values()), prediction, 
-		                    labels=['no tumor','tumor'],classes_to_plot=1)}) 
+		                    labels=['no tumor','tumor'],classes_to_plot=1,title='Precision vs Recall Val')}) 
 
 
 
@@ -452,7 +447,7 @@ def test_model(model, test_gen,datalen, args, trainConfig,wandb_logger):
                 step+=1
 
     # track validation metrics
-    valid_metrics = evaluate(y_det=iter([x[0] for x in all_valid_labels]),
+    valid_metrics = evaluate(y_det=iter([x[0] for x in all_valid_preds]),
                              y_true=iter([x[0] for x in all_valid_labels]),
                              subject_list=all_valid_keys,
                              y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0])
@@ -480,9 +475,9 @@ def test_model(model, test_gen,datalen, args, trainConfig,wandb_logger):
         prediction=np.stack((pred_notumor,np.array(list(valid_metrics.case_pred.values()))),axis=-1)      
         wandb_logger.log({
                           "rocTest" : wandb.plot.roc_curve(list(valid_metrics.case_target.values()),prediction ,
-                            labels=['no tumor','tumor'],classes_to_plot=1),
-                          "prTest":wandb.plot.pr_curve(list(valid_metrics.case_target.values()), prediction, 
-		                    labels=['no tumor','tumor'],classes_to_plot=1)})
+                            labels=['no tumor','tumor'],classes_to_plot=1,title='ROC FINAL'),
+                          "prTest":wandb.plot.pr_curve(list(valid_metrics.case_target.values()),prediction, 
+		                    labels=['no tumor','tumor'],classes_to_plot=1,title=' Precision vs recall FINAL ')})
 
         # Create a table with the columns to plot
         x=[i for i in range(len(all_valid_keys))]

@@ -6,7 +6,6 @@ from options.train_options import TrainOptions
 from data.data_loader import CreateDataLoader
 from config.train_setup import TrainSetup
 from models.models import create_model
-#import util.loggings
 from util.engine import optimize_model,validate_model,test_model
 from timm.utils import get_state_dict
 
@@ -20,7 +19,6 @@ import wandb
 opt,root_dir,max_epochs,val_interval,Plots=TrainOptions().parse()
 
 #util.loggings.init_distributed_mode(opt)
-
 if opt.Deterministic:
     seed=opt.seed#+ util.loggings.get_rank()
     set_determinism(seed)
@@ -59,6 +57,8 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
         writer=opt.log_writer,
         wandb_logger=opt.wandb_logger)
     
+    if trainConfig.Config.lr_scheduler is not None:
+        trainConfig.Config.lr_scheduler.step(epoch + 1)
 
     # ----------------------------------------------------------------------------------------------------------------------
     # for each round of validation
