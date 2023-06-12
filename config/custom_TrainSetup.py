@@ -12,6 +12,9 @@ def CreateTrainConfig(opt,model):
     elif opt.TrainConfig == 'PICAIConfig':#for training using TIMM library
         from config.PICAI_Config import PICAIConfig
         Config = PICAIConfig()
+    elif opt.TrainConfig == 'AMOSConfig':#for training using TIMM library
+        from config.AMOS_Config import AMOSConfig
+        Config = AMOSConfig()
     elif opt.TrainConfig == 'ContrastConfig':#for training using contrastive loss
         from config.Contrastive_Config import ContrastiveConfig
         Config = ContrastiveConfig()

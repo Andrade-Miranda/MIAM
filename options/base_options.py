@@ -120,7 +120,7 @@ class BaseOptions():
         if self.opt.name is None:
             self.opt.name=self.opt.encoder+'F'+str(self.opt.fold)
         else:
-            self.opt.name=self.opt.encoder+'_'+self.opt.name+'F'+str(self.opt.fold)
+            self.opt.name=self.opt.encoder+'__'+self.opt.name+'F'+str(self.opt.fold)
             
         #self.opt.imageSize=[int(self.opt.imageSize[i]) for i in range(len(self.opt.imageSize))]
         self.opt.filters_Encoder=tuple([int(self.opt.filters_Encoder[i]) for i in range(len(self.opt.filters_Encoder))])

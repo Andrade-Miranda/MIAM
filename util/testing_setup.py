@@ -128,9 +128,19 @@ def load_trainingSetup(file_name,args,numiter):
                 value= [(list(map(int,newValue[x:x+3]))) for x in range(0, len(newValue), 3)]
             elif key=='num_pool_per_axis':
                 newValue=value.translate({ord(i): None for i in '[,] '})                
-                value= [int(x) for x in newValue]    
+                value= [int(x) for x in newValue]
+            elif key=='hidden_size':
+                value=int(value)
+            elif key=='mlp_dim':
+                value=int(value)
+            elif key=='num_heads':
+                value=int(value)
+            elif key=='num_layers':
+                value=int(value)
+            elif key=='patchSize':
+                value=int(value)
             elif value[0].isnumeric() and len(value)>1:
-                if value[1]=='.':
+                if value[1]=='.' or bool(value.find('e')):
                     value=float(value)
                 else:
                     value=int(value)
@@ -227,10 +237,10 @@ def Mode_NCrossval(args,opt,output_folder):#### need to be updated
                     val_data= data
                 val_inputs=torch.from_numpy(val_data)[None,...].to(opt[i].device)
                 val_outputs = testConfig.Config.inference(val_inputs)
-                val_outputs = testConfig.Config.post_trans(val_outputs[0])
+                val_outputs = testConfig.Config.post_trans(val_outputs[0][1][None,...])
           
                 out_fname=output_filename
-                save_segmentation_nifti_from_softmax(val_outputs, out_fname,
+                save_segmentation_nifti_from_softmax(val_outputs.detach().cpu(), out_fname,
                                          dct, order=1,
                                          region_class_order= opt[i].region_class_order,
                                          seg_postprogess_fn= None, seg_postprocess_args= None,
@@ -239,7 +249,7 @@ def Mode_NCrossval(args,opt,output_folder):#### need to be updated
                                          interpolation_order_z= 0, verbose= True,isbrats=opt[i].isbrats)
            
                 del val_outputs
-                torch.cuda.empty_cache()             
+                #torch.cuda.empty_cache()             
 
 
 def Mode_MeanEnsembBrats(args,opt):#we don't applied argmax or discrete give directly the sigmoid, region_class_order 

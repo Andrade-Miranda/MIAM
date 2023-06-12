@@ -228,8 +228,7 @@ class DatasetAnalyzer(object):
         sizes, spacings = self.get_sizes_and_spacings_after_cropping()
 
         # get all classes and what classes are in what patients
-        # class min size
-        # region size per class
+        # class min size         # region size per class
         classes = self.get_classes()
         all_classes = [int(i) for i in classes.keys() if int(i) > 0]
 

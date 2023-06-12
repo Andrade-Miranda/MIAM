@@ -199,9 +199,9 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
         # learning rate update and setup
         if args.sched is not None:
             lr_scheduler.step_update(num_updates=step)
-            print(f"Learning Rate Updated! New Value: {lrupdate:.10}", flush=True)
-        else:
-            print(f"Learning Rate fix: {lrupdate:.10}", flush=True)
+            #print(f"Learning Rate Updated! New Value: {lrupdate:.10}", flush=True)
+        #else:
+        #    print(f"Learning Rate fix: {lrupdate:.10}", flush=True)
             
         if step >= args.num_training_steps_per_epoch: 
             break
@@ -439,7 +439,7 @@ def test_model(model, test_gen,datalen, args, trainConfig,wandb_logger):
             last_metrics['Val_Dice'][valid_data['keys'].tolist()[-1]]=str(dscScore)
             val_dice +=[dscScore]
             all_valid_keys += [valid_data['keys'].tolist()[-1]]
-            print(len(all_valid_keys),valid_data['keys'].tolist()[-1])
+            print(f"Number:{len(all_valid_keys)} CaseID:{valid_data['keys'].tolist()[-1]} DSC:{np.round(dscScore,4)}")
 
             if step==datalen:
                 break

@@ -19,7 +19,7 @@ import torch
 import torch.distributed as dist
 from torch._six import inf
 
-from tensorboardX import SummaryWriter
+#from tensorboardX import SummaryWriter
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -168,7 +168,8 @@ class MetricLogger(object):
         print('{} Total time: {} ({:.4f} s / it)'.format(
             header, total_time_str, total_time / num_training_steps_per_epoch))
 
-class TensorboardLogger(object):
+
+""" class TensorboardLogger(object):
     def __init__(self, log_dir):
         self.writer = SummaryWriter(logdir=log_dir)
         self.step = 0
@@ -189,7 +190,8 @@ class TensorboardLogger(object):
             self.writer.add_scalar(head + "/" + k, v, self.step if step is None else step)
 
     def flush(self):
-        self.writer.flush()
+        self.writer.flush() """
+
         
         
 

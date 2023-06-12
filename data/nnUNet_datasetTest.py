@@ -24,6 +24,7 @@ from data.base_dataset import BaseDataset
 import os
 from copy import deepcopy
 import torch
+import SimpleITK as sitk
 
 from multiprocessing import Process, Queue,Pool
 
@@ -75,7 +76,7 @@ class nnUNetDatasetTest(BaseDataset):
         #  "num_cached_per_thread": 1,
         # } 
         self.seeds_val= None
-        self.random_state=12345
+        self.random_state=int(opt.seed)
         self.fold=opt.fold
         self.segmentation_export_kwargs=None
         self.segs_from_prev_stage=None
@@ -88,7 +89,7 @@ class nnUNetDatasetTest(BaseDataset):
         
         task=self.opt.dataroot
         p = os.path.join(self.preprocessing_output_dir,task)        
-        self.plans=load_pickle(join(p, "nnUNetPlansv2.1_plans_3D.pkl"))
+        self.plans=load_pickle(join(p, opt.plan))
         
 
         #check if I have to fuse region, this is particular useful for brats dataset
@@ -104,8 +105,8 @@ class nnUNetDatasetTest(BaseDataset):
         task=self.opt.dataroot
         p = os.path.join(self.preprocessing_output_dir,task)
         input_folder=self.opt.input_folder
-        assert isfile(join(p, "nnUNetPlansv2.1_plans_3D.pkl")), "Folder must contain a plans.pkl file"
-        expected_num_modalities = load_pickle(join(p, "nnUNetPlansv2.1_plans_3D.pkl"))['num_modalities']
+        assert isfile(join(p, self.opt.plan)), "Folder must contain a plans.pkl file"
+        expected_num_modalities = load_pickle(join(p, self.opt.plan))['num_modalities']
         segmentation_export_kwargs=self.segmentation_export_kwargs
         segs_from_prev_stage=self.segs_from_prev_stage
         

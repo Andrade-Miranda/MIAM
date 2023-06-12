@@ -106,7 +106,8 @@ def main():
         i = int(i)
         
         #os.chdir("../../../")# change current directory
-        os.chdir(os.getcwd()+"/MIAM")
+        if os.getcwd().split('/')[-1]!='MIAM':
+            os.chdir(os.getcwd()+"/MIAM")
         task_name = convert_id_to_task_name(i)
 
         if args.verify_dataset_integrity:
