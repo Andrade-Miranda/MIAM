@@ -26,7 +26,7 @@ from util.analysis_utils import calculate_dsc
 from util.eval import evaluate
 import json
 from scipy.io import savemat
-
+import torch.nn.functional as F
 
 
 
@@ -179,11 +179,40 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
         if args.VAL_AMP:
             with torch.cuda.amp.autocast():
                 outputs = model(inputs)
-                loss = loss_func(outputs, labels[:, 0, ...].long())
+                loss = loss_func(outputs, labels)
         else: # full precision
             outputs = model(inputs)
-            loss = loss_func(outputs, labels[:, 0, ...].long())   
+            loss = loss_func(outputs, labels)   
         train_loss += loss.item()
+
+        ### temporal setting to track image
+        # import matplotlib.pyplot as plt
+        # plt.matplotlib.use('Agg')
+        # fig = plt.figure(figsize=(8, 8))
+        # columns = 2
+        # rows = 5
+        # fig.add_subplot(rows, columns, 1)
+        # plt.imshow(batch_data['image'][0,0,10,:,:],cmap='gray')
+        # fig.add_subplot(rows, columns, 2)
+        # plt.imshow(batch_data['image'][1,0,10,:,:],cmap='gray')
+        # fig.add_subplot(rows, columns, 3)
+        # plt.imshow(batch_data['label'][0,1,10,:,:],cmap='gray')
+        # fig.add_subplot(rows, columns, 4)
+        # plt.imshow(batch_data['label'][1,1,10,:,:],cmap='gray')
+        # fig.add_subplot(rows, columns, 5)
+        # plt.imshow(batch_data['label'][0,-1,10,:,:],cmap='gray')
+        # fig.add_subplot(rows, columns, 6)
+        # plt.imshow(batch_data['label'][1,-1,10,:,:],cmap='gray')
+        # fig.add_subplot(rows, columns, 7)
+        # plt.imshow(outputs[0,1,10,:,:].detach().cpu().numpy(),cmap='gray')
+        # fig.add_subplot(rows, columns, 8)
+        # plt.imshow(outputs[1,1,10,:,:].detach().cpu().numpy(),cmap='gray')
+        # fig.add_subplot(rows, columns, 9)
+        # plt.imshow(outputs[0,-1,10,:,:].detach().cpu().numpy(),cmap='gray')
+        # fig.add_subplot(rows, columns, 10)
+        # plt.imshow(outputs[1,-1,10,:,:].detach().cpu().numpy(),cmap='gray')
+        # plt.savefig(args.out_dir+'/'+'train/'+batch_data['keys'][0]+'_'+batch_data['keys'][1]+'_train')
+        ######
 
         # backpropagate + optimize
         optimizer.zero_grad()
@@ -191,7 +220,7 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
         scaler.step(optimizer)
         scaler.update()
         lrupdate=optimizer.param_groups[0]['lr']
-
+        #🐝
         if  args.enable_wandb:
             wandb_logger.log({"train/loss_step":loss.item(),
                               "learning_rate":np.round(lrupdate, 10)})
@@ -199,9 +228,9 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
         # learning rate update and setup
         if args.sched is not None:
             lr_scheduler.step_update(num_updates=step)
-            #print(f"Learning Rate Updated! New Value: {lrupdate:.10}", flush=True)
+            print(f"Learning Rate Updated! New Value: {lrupdate:.10}", flush=True)
         #else:
-        #    print(f"Learning Rate fix: {lrupdate:.10}", flush=True)
+            #print(f"Learning Rate fix: {lrupdate:.10}", flush=True)
             
         if step >= args.num_training_steps_per_epoch: 
             break
@@ -222,10 +251,10 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
     return model, optimizer, train_gen, tracking_metrics, writer,wandb_logger
 
 
-def validate_model(model, loss_func,optimizer,post_trans, valid_gen, args, tracking_metrics, writer,wandb_logger):
+def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics, writer,wandb_logger,Config):
     """Validate model per N epoch + export model weights"""
-    post_trans = post_trans
-    all_valid_preds, all_valid_labels,all_valid_keys,val_loss,val_dice = [], [],[], 0,0
+    post_trans = Config.Config.post_trans
+    all_valid_preds, all_valid_labels,all_valid_keys,val_loss,val_dice = [], [],[], 0,[]
     epoch, f = tracking_metrics['epoch'], tracking_metrics['fold_id']
     step=0
     # for each validation sample
@@ -239,9 +268,9 @@ def validate_model(model, loss_func,optimizer,post_trans, valid_gen, args, track
             valid_labels = torch.from_numpy(valid_data['label']).to(args.device)
         
         outputs = model(valid_images)
-        valloss = loss_func(outputs, valid_labels[:, 0, ...].long())
+        valloss = loss_func(outputs, valid_labels)# tomo el zero para poder hacer one-hot
         val_loss += valloss.item()
-        
+
         # test-time augmentation
         valid_images = [valid_images, torch.flip(valid_images, [4]).to(args.device)]
 
@@ -249,7 +278,7 @@ def validate_model(model, loss_func,optimizer,post_trans, valid_gen, args, track
         # gaussian blur to counteract checkerboard artifacts in
         # predictions from the use of transposed conv. in the U-Net
         preds = [
-            torch.sigmoid(model(x))[:, 1, ...].detach().cpu().numpy()
+            torch.sigmoid(model(x))[:,-1, ...].detach().cpu().numpy()
             for x in valid_images
         ]
 
@@ -264,19 +293,46 @@ def validate_model(model, loss_func,optimizer,post_trans, valid_gen, args, track
                 for x in preds
             ], axis=0)   #append to the list the validation prediction
         ]
-        all_valid_labels += [valid_labels.cpu().numpy()[:, 0, ...]] #append to the list the validation true label
+        
+        all_valid_labels += [valid_labels.cpu().numpy()[:, -1, ...]] #append to the list the validation true label
         pred_bin=post_trans(all_valid_preds[-1])
-        val_dice+=calculate_dsc(pred_bin.cpu().detach().numpy(),all_valid_labels[-1])
+        Config.Config.dice_metric(y_pred=torch.from_numpy(pred_bin[:,None,...].detach().numpy()), y=torch.from_numpy(all_valid_labels[-1][:,None,...]))#calculate_dsc(all_valid_preds[-1],all_valid_labels[-1])
         all_valid_keys += [valid_data['keys']]
+
+        ### temporal setting to track image
+        # import matplotlib.pyplot as plt
+        # plt.matplotlib.use('Agg')
+        # fig = plt.figure(figsize=(8, 8))
+        # columns = 2
+        # rows = 4
+        # fig.add_subplot(rows, columns, 1)
+        # plt.imshow(valid_data['image'][0,0,10,:,:],cmap='gray')
+        # fig.add_subplot(rows, columns, 2)
+        # plt.imshow(valid_data['image'][1,0,10,:,:],cmap='gray')        
+        # fig.add_subplot(rows, columns, 3)
+        # plt.imshow(valid_data['label'][0,1,10,:,:],cmap='gray')
+        # fig.add_subplot(rows, columns, 4)
+        # plt.imshow(valid_data['label'][1,1,10,:,:],cmap='gray')
+        # fig.add_subplot(rows, columns, 5)
+        # plt.imshow(valid_data['label'][0,-1,10,:,:],cmap='gray')
+        # fig.add_subplot(rows, columns, 6)
+        # plt.imshow(valid_data['label'][1,-1,10,:,:],cmap='gray')
+        # fig.add_subplot(rows, columns, 7)
+        # plt.imshow(pred_bin[0,10,:,:].detach().numpy(),cmap='gray')
+        # fig.add_subplot(rows, columns, 8)
+        # plt.imshow(pred_bin[1,10,:,:].detach().numpy(),cmap='gray')
+        # plt.savefig(args.out_dir+'/'+'val/'+valid_data['keys'][0]+'_'+valid_data['keys'][1]+'_val')
+        ######
 
         if step >= args.num_validation_steps_per_epoch: 
             break
 
-
+    val_dice.append(Config.Config.dice_metric.aggregate().item())
     # track validation metrics
     valid_metrics = evaluate(y_det=iter(np.concatenate([x for x in np.array(all_valid_preds)], axis=0)),
                              y_true=iter(np.concatenate([x for x in np.array(all_valid_labels)], axis=0)),
-                             #subject_list=all_valid_keys,num_parallel_calls=1,
+                             #subject_list=all_valid_keys,
+                             #num_parallel_calls=1,
                              y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0])
 
     num_pos = int(np.sum([np.max(y) for y in np.concatenate(
@@ -299,7 +355,7 @@ def validate_model(model, loss_func,optimizer,post_trans, valid_gen, args, track
     
     tracking_metrics['all_valid_metrics_ranking'].append(valid_metrics.score)
     tracking_metrics['all_valid_loss'].append(val_loss/step)
-    tracking_metrics['all_valid_metrics_Dice'].append(val_dice/step)
+    tracking_metrics['all_valid_metrics_Dice'].append(val_dice[-1])
 
 
     # export train-time + validation metrics as .xlsx sheet
@@ -328,31 +384,38 @@ def validate_model(model, loss_func,optimizer,post_trans, valid_gen, args, track
     writer.add_scalar("valid_ap",      valid_metrics.AP,    epoch+1)
     writer.add_scalar("valid_ranking", valid_metrics.score, epoch+1)
     writer.add_scalar("val_loss", val_loss/step, epoch+1)
-    writer.add_scalar("val_dice", val_dice/step, epoch+1)
+    writer.add_scalar("val_dice", val_dice[-1], epoch+1)
     
+    #🐝
     if  args.enable_wandb:
-        pred_notumor=1-np.array(list(valid_metrics.case_pred.values()))
-        prediction=np.stack((pred_notumor,np.array(list(valid_metrics.case_pred.values()))),axis=-1)      
+        #pred_notumor=1-np.array(list(valid_metrics.case_pred.values()))
+        #prediction=np.stack((pred_notumor,np.array(list(valid_metrics.case_pred.values()))),axis=-1)      
         wandb_logger.log({"val_loss":tracking_metrics['all_valid_loss'][-1],
                           "valid_auroc":valid_metrics.auroc,
                           "valid_ap":valid_metrics.AP,
                           "valid_dice":tracking_metrics['all_valid_metrics_Dice'][-1],
                           "valid_ranking":valid_metrics.score,
-                          "roc" : wandb.plot.roc_curve(list(valid_metrics.case_target.values()),prediction ,
-                            labels=['no tumor','tumor'],classes_to_plot=1,title='ROC Val'),
-                          "pr":wandb.plot.pr_curve(list(valid_metrics.case_target.values()), prediction, 
-		                    labels=['no tumor','tumor'],classes_to_plot=1,title='Precision vs Recall Val')}) 
+                          "roc" : wandb.plot.roc_curve([valid_metrics.case_target[s] for s in valid_metrics.subject_list],
+                                                        [[1-valid_metrics.case_pred[s],valid_metrics.case_pred[s]] for s in valid_metrics.subject_list],
+                                                        labels=['Benign','Malign'],classes_to_plot=1,
+                                                         title='ROC Val'),
+                          "pr":wandb.plot.pr_curve([valid_metrics.case_target[s] for s in valid_metrics.subject_list], 
+                                                   [[1-valid_metrics.case_pred[s],valid_metrics.case_pred[s]] for s in valid_metrics.subject_list],
+                                                   labels=['Benign','Malign'],classes_to_plot=1,
+                                                   title='Precision vs Recall Val')}) 
 
 
 
     print(f"Valid. Performance [Benign or Indolent PCa (n={num_neg}) \
         vs. csPCa (n={num_pos})]:\nRanking Score = {valid_metrics.score:.3f},\
         AP = {valid_metrics.AP:.3f}, AUROC = {valid_metrics.auroc:.3f}, \
-        DSC = {(val_dice/step):.3f}", flush=True)
+        DSC = {(val_dice[-1]):.5f}", flush=True)
+    
+    Config.Config.dice_metric.reset()
 
     # store model checkpoint if validation metric improves
     if valid_metrics.score > tracking_metrics['best_metric']:#valid_metrics.score
-        tracking_metrics['best_metric'] = valid_metrics.score
+        tracking_metrics['best_metric'] = val_dice[-1]#valid_metrics.score#val_dice/step #valid_metrics.score
         tracking_metrics['best_metric_epoch'] = epoch + 1
         
         weights_file = Path(args.expr_dir) / "BestCHK.pth"
@@ -380,9 +443,14 @@ def validate_model(model, loss_func,optimizer,post_trans, valid_gen, args, track
 
 
 def test_model(model, test_gen,datalen, args, trainConfig,wandb_logger):
+    # 🐝 create a wandb table to log input image, ground_truth masks and predictions
+    if  args.enable_wandb:
+        columns = ["filename", "image", "ground_truth", "prediction"]
+        table = wandb.Table(columns=columns)
+
     """Validate model per N epoch + export model weights"""
     post_trans = trainConfig.Config.post_trans
-    all_valid_preds, all_valid_labels,all_valid_pred_mask,all_valid_keys,val_dice = [], [],[],[], []
+    all_valid_preds, all_valid_labels,all_valid_keys,val_dice = [],[],[], []
     last_metrics={}
     last_metrics['Val_Dice']={}
     #args.device='cpu'
@@ -408,77 +476,64 @@ def test_model(model, test_gen,datalen, args, trainConfig,wandb_logger):
             except Exception:
                 valid_images = torch.from_numpy(valid_data['image']).to(args.device)
                 valid_labels = torch.from_numpy(valid_data['label']).to(args.device)
+            
+            fn = valid_data['keys'][-1]
+
         # test-time augmentation
-        #valid_images = [valid_images, torch.flip(valid_images, [4]).to('cpu')]
+            valid_images = [valid_images, torch.flip(valid_images, [4]).to(args.device)]
 
         # aggregate all validation predictions
         # gaussian blur to counteract checkerboard artifacts in
         # predictions from the use of transposed conv. in the U-Net
-        #preds = [
-        #    torch.sigmoid(trainConfig.Config.inference(x))[:, 1, ...].detach().numpy()
-        #    for x in valid_images
-        #]
+            preds = [
+                torch.sigmoid(trainConfig.Config.inference(x))[:, 1, ...].detach().cpu().numpy()
+                for x in valid_images
+            ]
 
         # revert horizontally flipped tta image
-        #preds[1] = np.flip(preds[1], [3])
+            preds[1] = np.flip(preds[1], [3])
 
         # gaussian blur to counteract checkerboard artifacts in
         # predictions from the use of transposed conv. in the U-Net
-        #all_valid_preds += [
-        #    np.mean([
-        #        gaussian_filter(x, sigma=1.5)
-        #        for x in preds
-        #    ], axis=0)   #append to the list the validation prediction
-        #]
-            preds=torch.sigmoid(trainConfig.Config.inference(valid_images))[:, 1, ...].detach().cpu().numpy()
-            all_valid_preds += [ preds]
+            all_valid_preds += [
+            np.mean([
+                gaussian_filter(x, sigma=1.5)
+                for x in preds
+            ], axis=0)   #append to the list the validation prediction
+            ]
 
-            all_valid_labels += [valid_labels.cpu().numpy()[:, 0, ...]] #append to the list the validation true label
-            all_valid_pred_mask +=[post_trans(all_valid_preds[-1]).numpy()]
-            dscScore=calculate_dsc(all_valid_pred_mask[-1],all_valid_labels[-1])
+            all_valid_labels += [valid_labels.cpu().numpy()[:, -1, ...]] #append to the list the validation true label
+            pred_bin=post_trans(all_valid_preds[-1])
+            trainConfig.Config.dice_metricTest(y_pred=torch.from_numpy(pred_bin[:,None,...].detach().numpy()), y=torch.from_numpy(all_valid_labels[-1][:,None,...]))
+            dscScore=trainConfig.Config.dice_metricTest.get_buffer()[-1]
             last_metrics['Val_Dice'][valid_data['keys'].tolist()[-1]]=str(dscScore)
             val_dice +=[dscScore]
             all_valid_keys += [valid_data['keys'].tolist()[-1]]
             print(f"Number:{len(all_valid_keys)} CaseID:{valid_data['keys'].tolist()[-1]} DSC:{np.round(dscScore,4)}")
 
+            if args.enable_wandb:
+                # log last 20 slices of each 3D image
+                total_slice=valid_data["image"].shape[2]
+                min=total_slice//2-7
+                max=total_slice//2+7
+                for slice_no in range(min, max):
+                    img = valid_data["image"][0, 0, slice_no,:, :]
+                    label = valid_data["label"][0, -1, slice_no,:, :]
+                    prediction = pred_bin.detach().cpu().numpy()[0, slice_no,:, :]
+                # 🐝 Add data to wandb table dynamically    
+                    table.add_data(fn, wandb.Image(img), wandb.Image(label), wandb.Image(prediction))
+
             if step==datalen:
                 break
             else:
                 step+=1
-
-    # track validation metrics
-    valid_metrics = evaluate(y_det=iter([x[0] for x in all_valid_preds]),
-                             y_true=iter([x[0] for x in all_valid_labels]),
-                             subject_list=all_valid_keys,
-                             y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0])
-    
-    
-    last_metrics['metrics_auroc']=str(valid_metrics.auroc)
-    last_metrics['metrics_FPR']=[str(x) for x in valid_metrics.calculate_ROC()['FPR'].tolist()]
-    last_metrics['metrics_TPR']=[str(x) for x in valid_metrics.calculate_ROC()['TPR'].tolist()]
-    last_metrics['metrics_BestROC_THR']=str(valid_metrics.calculate_ROC()['Best_THR'])
-    last_metrics['metrics_ap']=str(valid_metrics.AP)
-    last_metrics['metrics_precision']=[str(x) for x in valid_metrics.calculate_precision_recall()['precision'].tolist()]
-    last_metrics['metrics_recall']=[str(x) for x in valid_metrics.calculate_precision_recall()['recall'].tolist()]
-    last_metrics['metrics_BestPR_THR']=str(valid_metrics.calculate_precision_recall()['Best_THR'])
-    last_metrics['metrics_ranking']=str(valid_metrics.score)
-    last_metrics['metrics_Dice']=str(sum(val_dice)/len(val_dice))
-    
-    # export final validation metrics as json file
-    metrics_file = Path(args.out_dir) / "finalMetrics.json"
-    with open(metrics_file, "w") as f:
-          json.dump(last_metrics, f)
-
-    
+   
+    num_pos = int(np.sum([np.max(x) for x in np.array([x[0] for x in all_valid_labels],dtype=object)]))
+    num_neg = int(len([x for x in np.array([x[0] for x in all_valid_labels],dtype=object)]) - num_pos)
+     # 🐝
     if  args.enable_wandb:
-        pred_notumor=1-np.array(list(valid_metrics.case_pred.values()))
-        prediction=np.stack((pred_notumor,np.array(list(valid_metrics.case_pred.values()))),axis=-1)      
-        wandb_logger.log({
-                          "rocTest" : wandb.plot.roc_curve(list(valid_metrics.case_target.values()),prediction ,
-                            labels=['no tumor','tumor'],classes_to_plot=1,title='ROC FINAL'),
-                          "prTest":wandb.plot.pr_curve(list(valid_metrics.case_target.values()),prediction, 
-		                    labels=['no tumor','tumor'],classes_to_plot=1,title=' Precision vs recall FINAL ')})
-
+        # log predictions table to wandb with `val_predictions` as key
+        wandb.log({"val_predictions": table})
         # Create a table with the columns to plot
         x=[i for i in range(len(all_valid_keys))]
         data = [[case,x, y] for (case,x,y) in zip(all_valid_keys, x,val_dice)]
@@ -491,11 +546,54 @@ def test_model(model, test_gen,datalen, args, trainConfig,wandb_logger):
         wandb.log({"ValBar/plot" : wandb.plot.bar(table, "CasesID", "DSC",
                                  title="Val cases vs DSC bar")})
 
+    valid_metrics = evaluate(y_det=iter([x[None,...].resize(args.imageSize) for x in np.array([x[0] for x in all_valid_preds],dtype=object)]),
+                             y_true=iter([x[None,...].resize(args.imageSize) for x in np.array([x[0] for x in all_valid_labels],dtype=object)]),
+                             y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0])
 
+    
+    last_metrics['metrics_auroc']=str(valid_metrics.auroc)
+    last_metrics['metrics_FPR']=[str(x) for x in valid_metrics.calculate_ROC()['FPR'].tolist()]
+    last_metrics['metrics_TPR']=[str(x) for x in valid_metrics.calculate_ROC()['TPR'].tolist()]
+    last_metrics['metrics_BestROC_THR']=str(valid_metrics.calculate_ROC()['Best_THR'])
+    last_metrics['metrics_ap']=str(valid_metrics.AP)
+    last_metrics['metrics_precision']=[str(x) for x in valid_metrics.calculate_precision_recall()['precision'].tolist()]
+    last_metrics['metrics_recall']=[str(x) for x in valid_metrics.calculate_precision_recall()['recall'].tolist()]
+    last_metrics['metrics_BestPR_THR']=str(valid_metrics.calculate_precision_recall()['Best_THR'])
+    last_metrics['metrics_ranking']=str(valid_metrics.score)
+    last_metrics['metrics_Dice']=str(sum(val_dice)/len(val_dice))
+    
+    trainConfig.Config.dice_metricTest.reset()
+    # export final validation metrics as json file
+    metrics_file = Path(args.out_dir) / "finalMetrics.json"
+    with open(metrics_file, "w") as f:
+          json.dump(last_metrics, f)
+
+    # 🐝
+    if  args.enable_wandb:
+        wandb_logger.log({
+                        "rocTest" : wandb.plot.roc_curve([valid_metrics.case_target[s] for s in valid_metrics.subject_list],
+                                                        [[1-valid_metrics.case_pred[s],valid_metrics.case_pred[s]] for s in valid_metrics.subject_list],
+                                                        title='ROC Test'),
+                        "prTest":wandb.plot.pr_curve([valid_metrics.case_target[s] for s in valid_metrics.subject_list], 
+                                                   [[1-valid_metrics.case_pred[s],valid_metrics.case_pred[s]] for s in valid_metrics.subject_list],
+                                                   title='Precision vs Recall Test'),
+                        "Confusion Matrix Test WB":wandb.plot.confusion_matrix(
+                                         y_true=[valid_metrics.case_target[s] for s in valid_metrics.subject_list],
+                                        preds=[np.argmax([1-valid_metrics.case_pred[s],valid_metrics.case_pred[s]]) for s in valid_metrics.subject_list],     
+                                        class_names=['Benign','Malign']),
+                        "Confusion Matrix": wandb.sklearn.plot_confusion_matrix(y_true=[valid_metrics.case_target[s] for s in valid_metrics.subject_list],
+                                                                                 y_pred=[np.argmax([1-valid_metrics.case_pred[s],valid_metrics.case_pred[s]]) for s in valid_metrics.subject_list], 
+                                                                                 labels=['Benign','Malign'])
+                                        }) 
+# --------------------------------------------------------------------------------------------------------------------------) 
+    print(f"Valid. Performance [Benign or Indolent PCa (n={num_neg}) \
+        vs. csPCa (n={num_pos})]:\nRanking Score = {valid_metrics.score:.3f},\
+        AP = {valid_metrics.AP:.3f}, AUROC = {valid_metrics.auroc:.3f}, \
+        DSC = {(sum(val_dice)/len(val_dice)):.3f}", flush=True)
     #save_matrix = {'all_valid_labels': [np.array(i[0],dtype=object) for i in all_valid_labels], 
     #               'all_valid_pred_mask': [np.array(i[0],dtype=object) for i in all_valid_pred_mask],
     #              'all_valid_preds':[np.array(i[0],dtype=object) for i in all_valid_preds]}
     #savemat(os.path.join(args.out_dir,"validationResults.mat"), save_matrix)
-
+    trainConfig.Config.dice_metricTest
     
     return valid_metrics

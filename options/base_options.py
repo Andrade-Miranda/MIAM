@@ -63,6 +63,7 @@ class BaseOptions():
             self.initialize()
         self.opt = self.parser.parse_args()
         
+        features=(16,32,64,128,256,320,512,768,1028,1028,1028)#features filter for CNN network encoder
         
         #### Train o test ############
         if self.opt.yh_run_model=='Train' or self.opt.yh_run_model=='Continue':
@@ -101,11 +102,18 @@ class BaseOptions():
             self.opt.planning_stage='nnUNetData_plans_v2.1_stage'+str(self.opt.stage)
 
         self.opt.num_pool_per_axis=CurrentPlan['plans_per_stage'][self.opt.stage]['num_pool_per_axis']
-        self.opt.pool_op_kernel_sizes=CurrentPlan['plans_per_stage'][self.opt.stage]['pool_op_kernel_sizes'] 
-        self.opt.conv_kernel_sizes=CurrentPlan['plans_per_stage'][self.opt.stage]['conv_kernel_sizes']
-           
+        self.opt.pool_op_kernel_sizes=[[1,1,1]]+CurrentPlan['plans_per_stage'][self.opt.stage]['pool_op_kernel_sizes'] 
+        self.opt.conv_kernel_sizes=CurrentPlan['plans_per_stage'][self.opt.stage]['conv_kernel_sizes'] 
+        
         if self.opt.imageSize==0:
             self.opt.imageSize=CurrentPlan['plans_per_stage'][self.opt.stage]['patch_size'].tolist()
+            self.opt.filters_Encoder=features[:len(self.opt.conv_kernel_sizes)]
+        else:# tengo que cambiarlo para que dependa del imageSize y que tenga un valor minimo de 8,8,8 (autoconfigurable para los modelos basados
+            #en transformers) usar un downsampling menos del propuesto por nnunet
+            self.opt.num_pool_per_axis=[1,5,5]
+            self.opt.pool_op_kernel_sizes=[[1,1,1],[1, 2, 2], [1, 2, 2], [2, 2, 2], [1, 2, 2], [1, 2, 2]]
+            self.opt.conv_kernel_sizes=[[1, 3, 3], [1, 3, 3], [3, 3, 3], [3, 3, 3],[3, 3, 3],[3, 3, 3]]
+            self.opt.filters_Encoder=features[:len(self.opt.conv_kernel_sizes)]
         '-------------'
                 
         self.opt.sched=self.str2None(self.opt.sched)

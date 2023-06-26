@@ -19,6 +19,25 @@ from skimage.morphology import label, ball
 from skimage.morphology.binary import binary_erosion, binary_dilation, binary_closing, binary_opening
 import numpy as np
 
+class MoveChannelfromDataToSeg(AbstractTransform):
+    def __init__(self, channel_id, key_origin="data", key_target="seg", remove_from_origin=True):
+        self.remove_from_origin = remove_from_origin
+        self.key_target = key_target
+        self.key_origin = key_origin
+        self.channel_id = channel_id
+
+    def __call__(self, **data_dict):
+        origin = data_dict.get(self.key_origin)
+        target = data_dict.get(self.key_target)
+        seg = origin[:, self.channel_id:self.channel_id+1]
+        target = np.concatenate((target, seg), 1)
+        data_dict[self.key_target] = target
+
+        if self.remove_from_origin:
+            remaining_channels = [i for i in range(origin.shape[1]) if i != self.channel_id]
+            origin = origin[:, remaining_channels]
+            data_dict[self.key_origin] = origin
+        return data_dict
 
 class RemoveRandomConnectedComponentFromOneHotEncodingTransform(AbstractTransform):
     def __init__(self, channel_idx, key="data", p_per_sample=0.2, fill_with_other_class_p=0.25,

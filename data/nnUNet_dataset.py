@@ -150,7 +150,7 @@ class nnUNetDataset(BaseDataset):
         
         #default setting nnUNET dataloading
         self.pad_all_sides = None
-        self.oversample_foreground_percent = 0.5
+        self.oversample_foreground_percent = 0.5#0.33
         
         
         #check if I have to fuse region, this is particular useful for brats dataset
@@ -284,7 +284,7 @@ class nnUNetDataset(BaseDataset):
         val_transforms.append(NumpyToTensor(['image', 'label'], 'float'))
         val_transforms = Compose(val_transforms)
 
-        batchgenerator_test = DataLoaderTest3D(self.dataset_val,val_transforms,self.opt.Val_batchSize)
+        batchgenerator_test = DataLoaderTest3D(self.dataset_val,val_transforms,1)
         if self.opt.Deterministic:
             seeds=self.seeds_val[:int(max(params.get('num_threads') // 2, 1))]
         else:

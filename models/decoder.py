@@ -13,7 +13,50 @@ from .EncoderConvNeXt import LayerNorm
 from timm.models.layers import DropPath
 from util.block import UPResBlock
 
-#from monai.networks.nets.vit import ViT
+
+
+"""
+DECODER
+"""
+class CNN_decoder(nn.ModuleList):
+
+    def __init__(
+       self,
+       spatial_dims,
+       num_modality,
+       features,
+       norm_name,
+       res_block,
+       kernel_sizes,
+       stride, 
+
+    ):
+        super(CNN_decoder,self).__init__()
+        self.decoderList=nn.ModuleList()
+
+        for i in range(len(features)-1):
+            decoder = UnetrUpBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=features[-i-1]* num_modality,
+                    out_channels=features[-i-2] * num_modality,
+                    kernel_size=tuple(kernel_sizes[-i-1]),
+                    upsample_kernel_size= tuple(stride[-i-1]),
+                    norm_name=norm_name,
+                    res_block=res_block,
+                    )
+            self.decoderList.append(decoder)
+            
+    def forward(self, x):
+        y=[]
+        x1=x[-1].clone()
+        for j in range(len(self.decoderList)):
+            x1 = self.decoderList[j](x1,x[-j-2])
+            y.append(x1)
+        return y   
+
+
+
+
 
 class CNN_PuPMLA(nn.ModuleList):
 

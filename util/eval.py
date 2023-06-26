@@ -103,6 +103,19 @@ def evaluate_case(
     y_true = y_true.astype('int32')
     y_det = y_det.astype('float32')
 
+    ### temporal setting to track image
+    #import matplotlib.pyplot as plt
+    #plt.matplotlib.use('Agg')
+    #fig = plt.figure(figsize=(8, 8))
+    #columns = 2
+    #rows = 1
+    #fig.add_subplot(rows, columns, 1)
+    #plt.imshow(y_true[10,:,:],cmap='gray')
+    #fig.add_subplot(rows, columns, 2)
+    #plt.imshow(y_det[10,:,:],cmap='gray')
+    #plt.savefig('/home/gustavo/Code/Git_workspace/MIAM/Output/'+'caseTrue-false'+'_val'+str(idx))
+    ######
+
     # if specified, apply postprocessing functions
     if y_det_postprocess_func is not None:
         y_det = y_det_postprocess_func(y_det)

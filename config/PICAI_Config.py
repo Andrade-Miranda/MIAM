@@ -6,13 +6,13 @@ Created on Thu Oct 21 11:40:28 2021
 @author: gustavo
 """
 import torch
+from monai.losses import FocalLoss,DiceFocalLoss
 from monai.inferers import sliding_window_inference
 from pathlib import Path
 import numpy as np
-from util.losses import FocalLoss
+from util.losses import FocalLossBin
 import json
-
-
+from monai.metrics import DiceMetric
 from timm.utils import NativeScaler
 from timm.scheduler import create_scheduler_v2
 from timm.optim import create_optimizer
@@ -20,6 +20,8 @@ import pandas as pd
 
 from monai.transforms import (
         AsDiscrete,
+        Activations,
+        Compose
         )
 
 class PICAIConfig():
@@ -38,9 +40,14 @@ class PICAIConfig():
         # load paths to images and labels
         train_data = [np.array(train_json['image_paths']), np.array(train_json['label_paths'])]
         valid_data = [np.array(valid_json['image_paths']), np.array(valid_json['label_paths'])]
-        self.class_ratio_t = [int(np.sum(train_json['case_label'])), int(len(train_data[0])-np.sum(train_json['case_label']))]
-        self.class_ratio_v = [int(np.sum(valid_json['case_label'])), int(len(valid_data[0])-np.sum(valid_json['case_label']))]
-        self.class_weights = (self.class_ratio_t / np.sum(self.class_ratio_t))
+        if self.opt.output_nc<=2:
+            self.class_ratio_t = [int(np.sum(train_json['case_label'])), int(len(train_data[0])-np.sum(train_json['case_label']))]
+            self.class_ratio_v = [int(np.sum(valid_json['case_label'])), int(len(valid_data[0])-np.sum(valid_json['case_label']))]
+            self.class_weights = (self.class_ratio_t / np.sum(self.class_ratio_t))
+        else:
+            self.class_ratio_t = [int(np.sum(train_json['case_label']))//2, int(len(train_data[0])-np.sum(train_json['case_label'])//2)]
+            self.class_ratio_v = [int(np.sum(valid_json['case_label']))//2, int(len(valid_data[0])-np.sum(valid_json['case_label'])//2)]
+            self.class_weights = (self.class_ratio_t / np.sum(self.class_ratio_t))
         
         # log dataset definition
         print('Dataset Definition:', "-"*80)
@@ -62,7 +69,15 @@ class PICAIConfig():
         
         self.loss_scaler = torch.cuda.amp.GradScaler()#NativeScaler() # if args.use_amp is False, this won't be used
         
-        self.loss_function = FocalLoss(alpha=self.class_weights[-1], gamma=1).to(self.opt.device)
+        if self.opt.output_nc>=3:
+            self.loss_function = FocalLoss(include_background=False,  # only two classes and keep the same weight as before 
+                                           to_onehot_y=False, 
+                                            gamma=1.0, 
+                                            weight=torch.tensor(self.class_weights),
+                                            reduction="mean").to(self.opt.device)
+            
+        else:
+            self.loss_function = FocalLossBin(alpha=self.class_weights[-1], gamma=1,num_classes=self.opt.output_nc).to(self.opt.device)
 
         if self.opt.sched is not None:
             num_epochs=self.opt.epochs
@@ -78,6 +93,11 @@ class PICAIConfig():
             self.lr_scheduler=None
 
         self.post_trans = AsDiscrete(threshold=0.5)
+           
+
+        #metrics
+        self.dice_metric = DiceMetric(include_background=True, reduction="mean",ignore_empty=True)
+        self.dice_metricTest = DiceMetric(include_background=True, reduction="mean",ignore_empty=False)
 
         print('#Config Training scheme created')
         self.resume_or_restart_training()
@@ -191,7 +211,7 @@ class PICAIConfig():
             return sliding_window_inference(
                     inputs=input,
                     roi_size=self.opt.imageSize,
-                    sw_batch_size=self.opt.Val_batchSize,
+                    sw_batch_size=1,#self.opt.Val_batchSize,
                     predictor=self.model,
                     overlap=0.5                    
                     )

@@ -64,7 +64,7 @@ def main():
     #num_threads_nifti_save = args.num_threads_nifti_save
     encoder = args.model.split('__')[0]
     mode=args.mode
-    
+
     modelname=[args.model+'F'+str(args.folds[i]) for i in range(len(args.folds))]
     chk_folder = [join(args.chkdir,args.task_name,encoder,modelname[i]) for i in range(len(args.folds))]
     args.checkpoints_dir=chk_folder

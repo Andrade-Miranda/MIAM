@@ -12,6 +12,9 @@ def CreateDataset(opt):
     elif opt.dataset_mode == 'nnUNetAmos':
         from data.nnUNetAmos_dataset import nnUNetAmosDataset
         dataset = nnUNetAmosDataset()
+    elif opt.dataset_mode == 'nnUNetExtchan':
+        from data.nnUNetExtchan_dataset import nnUNetExtchanDataset
+        dataset = nnUNetExtchanDataset()
     elif opt.dataset_mode == 'test' or opt.dataset_mode=='MeanEnsemb' or opt.dataset_mode=='Nfold' or opt.dataset_mode=='TTA':
         from data.nnUNet_datasetTest import nnUNetDatasetTest
         dataset = nnUNetDatasetTest()   

@@ -17,65 +17,10 @@ from monai.networks.nets.vit import ViT
 from monai.utils import ensure_tuple_rep
 from torch.nn import init
 from util.util import print_network
-from .decoder import CNN_PuPMLA
-
-
-""" Basic Unet 
-    A UNet Encoder block  implementation with 1D/2D/3D supports.
-        Based on:
-Falk et al. "U-Net – Deep Learning for Cell Counting, Detection, and
-Morphometry". Nature Methods 16, 67–70 (2019), DOI:http://dx.doi.org/10.1038/s41592-018-0261-2
-    Adapted from Monai
-"""
-""" CNN heavy --CNN_h
-"""
-class BasicUnetEnc(nn.ModuleList):
-
-    def __init__(
-       self,
-       spatial_dims,
-       in_channels,
-       features,
-       norm_name,
-       res_block,
-       conv_block=True
-    ):
-        super(BasicUnetEnc,self).__init__()
-        self.encoderList=nn.ModuleList()
-        
-        for i in range(len(features)):
-            if i==0:
-                encoder= UnetrBasicBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=in_channels,
-                    out_channels=features[i],
-                    kernel_size=3,
-                    stride=1,
-                    norm_name=norm_name,
-                    res_block=res_block,
-                    )
-            else:
-                encoder= UnetrBasicBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=features[i-1],
-                    out_channels=features[i],
-                    kernel_size=3,
-                    stride=2,
-                    norm_name=norm_name,
-                    res_block=res_block,
-                    )
-            self.encoderList.append(encoder)
-
-
-    def forward(self, x):
-        y=[]
-        for j in range(len(self.encoderList)):
-            x = self.encoderList[j](x)
-            y.append(x)
-        return y       
+from .encoder import BasicUnetEnc
+from .decoder import CNN_decoder
 
   
-
 class CNNHeavy_VITNaive(nn.Module):
 
     def __init__(self, opt):
@@ -94,6 +39,8 @@ class CNNHeavy_VITNaive(nn.Module):
         res_block=opt.res_block
         dropout_rate= opt.dropout_rate
         spatial_dims= opt.spatial_dims
+        kernel_sizes=opt.conv_kernel_sizes
+        stride=opt.pool_op_kernel_sizes
         self.opt=opt
         """
         Args:
@@ -126,18 +73,18 @@ class CNNHeavy_VITNaive(nn.Module):
             features= filters_Encoder,
             norm_name=norm_name,
             res_block=res_block,
+            kernel_sizes=kernel_sizes,
+            stride=stride,
             )
         """ ----------------------------------------------------------------"""      
-      
-        self.MaxPool=nn.MaxPool3d(3, stride=2,padding=0,dilation=1,ceil_mode=True)
-        
+              
         """ -------------------VIT encoders------------------------------- """      
         if hidden_size % num_heads != 0:
             raise ValueError("hidden_size should be divisible by num_heads.")
             
         self.num_layers = num_layers
-        downfactor=int(2**(len(filters_Encoder))) #for extra maxpooling
-        img_size = tuple([math.ceil((x/downfactor)) for x in img_size])
+        downfactor=[int(2**(i)) for i in self.opt.num_pool_per_axis] #for extra maxpooling
+        img_size = tuple([math.ceil((x/downfactor[i])) for i,x in enumerate(img_size)])
         
         img_size = ensure_tuple_rep(img_size, spatial_dims)
         self.patch_size = ensure_tuple_rep(feature_size, spatial_dims)
@@ -159,26 +106,18 @@ class CNNHeavy_VITNaive(nn.Module):
             spatial_dims=spatial_dims,
         )
         """ ------------------------------------------------------------- """  
-        
-        
-        """ -------------------CNN decoders------------------------------- """
-        self.UpsamplingConv=get_conv_layer(
-            spatial_dims=spatial_dims,
-            in_channels=hidden_size,
-            out_channels=hidden_size,
-            kernel_size=3,
-            stride=2,
-            conv_only=True,
-            is_transposed=True,
-            )
+        from copy import deepcopy
+        filters_EncVit=list(deepcopy(filters_Encoder))
+        filters_EncVit[-1]=hidden_size
              
-        self.decoder=CNN_PuPMLA(
+        self.decoder=CNN_decoder(
                    spatial_dims=spatial_dims,
-                   hidden_size=hidden_size,
                    num_modality=1,
-                   features=filters_Encoder,
+                   features=tuple(filters_EncVit),
                    norm_name=norm_name,
-                   res_block=res_block,            
+                   res_block=res_block, 
+                   kernel_sizes=kernel_sizes,
+                   stride=stride,           
                    )
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0], out_channels=out_channels)
         """ ------------------------------------------------------------- """      
@@ -212,20 +151,15 @@ class CNNHeavy_VITNaive(nn.Module):
     def forward(self, x_in):
         
         encModal=self.encodModalities(x_in)
-        maxPool=self.MaxPool(encModal[-1])
         
-        outViT, hidden_states_out = self.vit(maxPool)
-        decfinal = self.proj_feat(outViT, self.hidden_size, self.feat_size)
-        decfinal= self.UpsamplingConv(decfinal)
+        outViT, hidden_states_out = self.vit(encModal[-1])
+        outViT = self.proj_feat(outViT, self.hidden_size, self.feat_size)
+
+        encModal[-1]=outViT.clone()
+        output=self.decoder(encModal)
         
-        j=-1
-        for numdec in range(self.numConvLevel):
-            if numdec==0 and encModal[j].shape[-1]!=decfinal.shape[-1]:
-                decfinal=self.reshapeConv(decfinal)
-            decfinal = self.decoder.decoderList[numdec](decfinal,encModal[j])#change to only concat
-            j=j-1
+        return self.out(output[-1])
         
-        return self.out(decfinal)
     
 
     def name(self):

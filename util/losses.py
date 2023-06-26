@@ -176,17 +176,18 @@ class PatchNCELoss(nn.Module):
         return loss
         
         
-class FocalLoss(nn.Module):
+class FocalLossBin(nn.Module):
     """Focal loss function for binary segmentation."""
 
     def __init__(self, alpha=1, gamma=2, num_classes=2, reduction="sum"):
-        super(FocalLoss, self).__init__()
+        super(FocalLossBin, self).__init__()
         self.alpha = alpha
         self.gamma = gamma
         self.num_classes = num_classes
         self.reduction = reduction
 
     def forward(self, inputs, targets):
+        targets=targets[:, 0, ...].long()
         inputs = torch.sigmoid(inputs)
         targets = F.one_hot(targets, num_classes=self.num_classes).float()
         targets = torch.moveaxis(targets, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))

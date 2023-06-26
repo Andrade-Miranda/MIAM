@@ -18,113 +18,10 @@ from monai.utils import ensure_tuple_rep
 from torch.nn import init
 from util.util import print_network
 from monai.networks.blocks.unetr_block import UnetrUpBlock
+from .encoder import BasicUnetEnc
+from .decoder import CNN_decoder
 
 
-
-""" Basic Unet 
-    A UNet Encoder block  implementation with 1D/2D/3D supports.
-        Based on:
-Falk et al. "U-Net – Deep Learning for Cell Counting, Detection, and
-Morphometry". Nature Methods 16, 67–70 (2019), DOI:http://dx.doi.org/10.1038/s41592-018-0261-2
-    Adapted from Monai
-"""
-""" CNN heavy --CNN_h
-"""
-class BasicUnetEnc(nn.ModuleList):
-
-    def __init__(
-       self,
-       spatial_dims,
-       in_channels,
-       features,
-       norm_name,
-       res_block,
-       conv_block=True
-    ):
-        super(BasicUnetEnc,self).__init__()
-        self.encoderList=nn.ModuleList()
-        
-        for i in range(len(features)):
-            if i==0:
-                encoder= UnetrBasicBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=1,
-                    out_channels=features[i],
-                    kernel_size=3,
-                    stride=1,
-                    norm_name=norm_name,
-                    res_block=res_block,
-                    )
-            else:
-                encoder= UnetrBasicBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=features[i-1],
-                    out_channels=features[i],
-                    kernel_size=3,
-                    stride=2,
-                    norm_name=norm_name,
-                    res_block=res_block,
-                    )
-            self.encoderList.append(encoder)
-
-
-    def forward(self, x):
-        y=[]
-        for j in range(len(self.encoderList)):
-            x = self.encoderList[j](x)
-            y.append(x)
-        return y       
-
-"""
-DECODER
-"""
-class CNN_PuPMLA(nn.ModuleList):
-
-    def __init__(
-       self,
-       spatial_dims,
-       num_modality,
-       features,
-       norm_name,
-       res_block,
-       conv_block=True
-    ):
-        super(CNN_PuPMLA,self).__init__()
-        self.decoderList=nn.ModuleList()
-        
-        for i in range(len(features)):
-            if i==0:
-                decoder = UnetrUpBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=features[-1] * num_modality,# first correspond to the hidden_size coming from transformer
-                    out_channels=features[-1] * num_modality,# last feature kernel
-                    kernel_size=3,
-                    upsample_kernel_size=2,#upsample kernel is 2 always in UNETR
-                    norm_name=norm_name,
-                    res_block=res_block,
-                    )
-            else:
-                decoder = UnetrUpBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=features[-i] * num_modality,
-                    out_channels=features[-i-1] * num_modality,
-                    kernel_size=3,
-                    upsample_kernel_size=2,
-                    norm_name=norm_name,
-                    res_block=res_block,
-                    )
-            self.decoderList.append(decoder)
-            
-    def forward(self, x):
-        y=[]
-        for j in range(len(self.decoderList)):
-            x = self.decoderList[j](x)
-            y.append(x)
-        return y  
-    
-
-
-  
 
 class MultiCNNHeavy(nn.Module):
 
@@ -137,6 +34,8 @@ class MultiCNNHeavy(nn.Module):
         res_block=opt.res_block
         dropout_rate= opt.dropout_rate
         spatial_dims= opt.spatial_dims
+        kernel_sizes=opt.conv_kernel_sizes
+        stride=opt.pool_op_kernel_sizes
         self.opt=opt
         """
         Args:
@@ -167,22 +66,25 @@ class MultiCNNHeavy(nn.Module):
         for i in range(in_channels):
             self.encodModalities.append(BasicUnetEnc(
             spatial_dims= spatial_dims,
-            in_channels= in_channels,
+            in_channels= 1,
             features= filters_Encoder,
             norm_name=norm_name,
             res_block=res_block,
+            kernel_sizes=kernel_sizes,
+            stride=stride,
             )
                 )
         """ ----------------------------------------------------------------"""              
-        self.MaxPool=nn.MaxPool3d(3, stride=2,padding=0,dilation=1,ceil_mode=True)
 
         """ -------------------CNN decoders------------------------------- """             
-        self.decoder=CNN_PuPMLA(
+        self.decoder=CNN_decoder(
                    spatial_dims=spatial_dims,
                    num_modality=in_channels,
                    features=filters_Encoder,
                    norm_name=norm_name,
-                   res_block=res_block,            
+                   res_block=res_block,
+                   kernel_sizes=kernel_sizes,
+                   stride=stride,            
                    )
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0] * in_channels, out_channels=out_channels)
         """ ------------------------------------------------------------- """      
@@ -208,18 +110,13 @@ class MultiCNNHeavy(nn.Module):
                 skip.append(encModal[j][i])# list of tensor
             skip_connections.append(torch.cat(skip,1))
             
-        decfinal=self.MaxPool(skip_connections[-1])
+        decfinal=self.decoder(skip_connections)
 
-        j=-1
-        for numdec in range(self.numConvLevel):
-            decfinal = self.decoder.decoderList[numdec](decfinal,skip_connections[j])#change to only concat
-            j=j-1
-        
-        return self.out(decfinal)
+        return self.out(decfinal[-1])
     
 
     def name(self):
-        return 'Multipath with Heavy CNN + VIT Naive'
+        return 'Multipath CNN encoder with CNN Decoder'
 
 
         """--------------------Initialize network weights.---------------"""   

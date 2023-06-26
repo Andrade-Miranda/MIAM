@@ -10,9 +10,6 @@ from util.engine import optimize_model,validate_model,test_model
 from timm.utils import get_state_dict
 
 from monai.utils import set_determinism
-import wandb
-
-
 
 
 ############# Load Options####################################################
@@ -28,7 +25,7 @@ if opt.Deterministic:
 """ --------load Data --------------- """ 
 data_loader = CreateDataLoader(opt)
 train_loader,val_loader,test_loader,datalen = data_loader.load_data()
-opt.num_validation_steps_per_epoch =datalen[1]//opt.Val_batchSize
+opt.num_validation_steps_per_epoch =20//opt.Val_batchSize#datalen[1]//opt.Val_batchSize #
 print('#Data loader scheme created')  
 """-----------------------------------"""
     
@@ -55,7 +52,8 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
         args=opt, 
         tracking_metrics=trainConfig.Config.tracking_metrics,
         writer=opt.log_writer,
-        wandb_logger=opt.wandb_logger)
+        wandb_logger=opt.wandb_logger,
+        )
     
     if trainConfig.Config.lr_scheduler is not None:
         trainConfig.Config.lr_scheduler.step(epoch + 1)
@@ -72,23 +70,16 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
                 model=model, 
                 loss_func=trainConfig.Config.loss_function,
                 optimizer=trainConfig.Config.optimizer, 
-                post_trans=trainConfig.Config.post_trans,
                 valid_gen=val_loader, 
                 args=opt,
                 tracking_metrics=trainConfig.Config.tracking_metrics, 
                 writer=opt.log_writer,
-                wandb_logger=opt.wandb_logger
+                wandb_logger=opt.wandb_logger,
+                Config=trainConfig,
                 )
 
 test_metrics=test_model(model,test_loader,datalen[1], opt, trainConfig,opt.wandb_logger)
 
-# ------------------------------Final confusion matrix----------------------------------------
-predconf=np.array(list(test_metrics.case_pred.values()))
-predconf[predconf>trainConfig.Config.tracking_metrics['all_valid_metrics_BestROC_THR'][-1]]=1
-predconf[predconf<=trainConfig.Config.tracking_metrics['all_valid_metrics_BestROC_THR'][-1]]=0
-opt.wandb_logger.log({"confusion":wandb.sklearn.plot_confusion_matrix(list(test_metrics.case_target.values()), 
-                        predconf)}) 
-# --------------------------------------------------------------------------------------------------------------------------
 print(
     f"Training Complete! Peak Validation Ranking Score: {trainConfig.Config.tracking_metrics['best_metric']:.4f} "
     f"@ Epoch: {trainConfig.Config.tracking_metrics['best_metric_epoch']}")
