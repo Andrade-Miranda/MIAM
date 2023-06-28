@@ -35,12 +35,12 @@ class CNNHeavy_VITNaive(nn.Module):
         num_layers=opt.num_layers
         pos_embed=opt.pos_embed
         norm_name=opt.norm_name
-        filters_Encoder=opt.filters_Encoder
+        filters_Encoder=opt.filters_Encoder[:-1]
         res_block=opt.res_block
         dropout_rate= opt.dropout_rate
         spatial_dims= opt.spatial_dims
-        kernel_sizes=opt.conv_kernel_sizes
-        stride=opt.pool_op_kernel_sizes
+        kernel_sizes=opt.conv_kernel_sizes[:-1]
+        stride=opt.pool_op_kernel_sizes[:-1]
         self.opt=opt
         """
         Args:
@@ -78,7 +78,14 @@ class CNNHeavy_VITNaive(nn.Module):
             )
         """ ----------------------------------------------------------------"""      
               
-        """ -------------------VIT encoders------------------------------- """      
+        """ -------------------VIT encoders------------------------------- """
+        a,b,c=0,0,0
+        for i,j,k in self.opt.pool_op_kernel_sizes[:-1]:
+            if i==2: a+=1 
+            if j==2: b+=1 
+            if k==2: c+=1
+        self.opt.num_pool_per_axis=[a,b,c]
+
         if hidden_size % num_heads != 0:
             raise ValueError("hidden_size should be divisible by num_heads.")
             
@@ -108,7 +115,7 @@ class CNNHeavy_VITNaive(nn.Module):
         """ ------------------------------------------------------------- """  
         from copy import deepcopy
         filters_EncVit=list(deepcopy(filters_Encoder))
-        filters_EncVit[-1]=hidden_size
+        filters_EncVit.append(hidden_size)
              
         self.decoder=CNN_decoder(
                    spatial_dims=spatial_dims,
@@ -116,8 +123,8 @@ class CNNHeavy_VITNaive(nn.Module):
                    features=tuple(filters_EncVit),
                    norm_name=norm_name,
                    res_block=res_block, 
-                   kernel_sizes=kernel_sizes,
-                   stride=stride,           
+                   kernel_sizes=kernel_sizes+[[3,3,3]],
+                   stride=stride+[[1,1,1]],           
                    )
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0], out_channels=out_channels)
         """ ------------------------------------------------------------- """      
@@ -154,8 +161,7 @@ class CNNHeavy_VITNaive(nn.Module):
         
         outViT, hidden_states_out = self.vit(encModal[-1])
         outViT = self.proj_feat(outViT, self.hidden_size, self.feat_size)
-
-        encModal[-1]=outViT.clone()
+        encModal.append(outViT)
         output=self.decoder(encModal)
         
         return self.out(output[-1])

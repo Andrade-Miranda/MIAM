@@ -48,13 +48,10 @@ class CNN_decoder(nn.ModuleList):
             
     def forward(self, x):
         y=[]
-        x1=x[-1].clone()
         for j in range(len(self.decoderList)):
-            x1 = self.decoderList[j](x1,x[-j-2])
+            x1 = self.decoderList[j](x[-j-1],x[-j-2])
             y.append(x1)
         return y   
-
-
 
 
 

@@ -10,7 +10,7 @@ from monai.losses import FocalLoss,DiceFocalLoss
 from monai.inferers import sliding_window_inference
 from pathlib import Path
 import numpy as np
-from util.losses import FocalLossBin
+from util.losses import FL_and_CE_loss
 import json
 from monai.metrics import DiceMetric
 from timm.utils import NativeScaler
@@ -69,15 +69,16 @@ class PICAIConfig():
         
         self.loss_scaler = torch.cuda.amp.GradScaler()#NativeScaler() # if args.use_amp is False, this won't be used
         
-        if self.opt.output_nc>=3:
+        if self.opt.output_nc>2:
+        #    self.loss_function = FL_and_CE_loss(alpha=self.class_weights[-1])#.to(self.opt.device)
             self.loss_function = FocalLoss(include_background=False,  # only two classes and keep the same weight as before 
-                                           to_onehot_y=False, 
-                                            gamma=1.0, 
-                                            weight=torch.tensor(self.class_weights),
-                                            reduction="mean").to(self.opt.device)
+                                            to_onehot_y=False, 
+                                             gamma=1.0, 
+                                             weight=torch.tensor(self.class_weights),
+                                             reduction="sum").to(self.opt.device)
             
         else:
-            self.loss_function = FocalLossBin(alpha=self.class_weights[-1], gamma=1,num_classes=self.opt.output_nc).to(self.opt.device)
+            self.loss_function = FL_and_CE_loss(fl_kwargs={'alpha':self.class_weights[-1]}).to(self.opt.device)
 
         if self.opt.sched is not None:
             num_epochs=self.opt.epochs
@@ -92,12 +93,15 @@ class PICAIConfig():
         else:
             self.lr_scheduler=None
 
-        self.post_trans = AsDiscrete(threshold=0.5)
+        self.post_trans = Compose(
+                [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
+            )
            
 
         #metrics
-        self.dice_metric = DiceMetric(include_background=True, reduction="mean",ignore_empty=True)
-        self.dice_metricTest = DiceMetric(include_background=True, reduction="mean",ignore_empty=False)
+        self.dice_metricTrain = DiceMetric(include_background=False, reduction="mean",ignore_empty=False)
+        self.dice_metricVal = DiceMetric(include_background=False, reduction="mean",ignore_empty=False)
+        self.dice_metricTest = DiceMetric(include_background=False, reduction="mean",ignore_empty=False)
 
         print('#Config Training scheme created')
         self.resume_or_restart_training()

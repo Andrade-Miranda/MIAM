@@ -25,7 +25,7 @@ if opt.Deterministic:
 """ --------load Data --------------- """ 
 data_loader = CreateDataLoader(opt)
 train_loader,val_loader,test_loader,datalen = data_loader.load_data()
-opt.num_validation_steps_per_epoch =20//opt.Val_batchSize#datalen[1]//opt.Val_batchSize #
+opt.num_validation_steps_per_epoch = 10//opt.Val_batchSize#datalen[1]datalen[1]//opt.Val_batchSize #50//opt.Val_batchSize#datalen[1]//opt.Val_batchSize #
 print('#Data loader scheme created')  
 """-----------------------------------"""
     
@@ -53,6 +53,7 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
         tracking_metrics=trainConfig.Config.tracking_metrics,
         writer=opt.log_writer,
         wandb_logger=opt.wandb_logger,
+        Config=trainConfig
         )
     
     if trainConfig.Config.lr_scheduler is not None:

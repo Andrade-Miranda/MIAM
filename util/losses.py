@@ -7,8 +7,15 @@ from packaging import version
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from nnUNet.nnunet.training.loss_functions.crossentropy import RobustCrossEntropyLoss
+from nnUNet.nnunet.training.network_training.nnUNet_variants.loss_function.nnUNetTrainerV2_focalLoss import \
+    FocalLoss
+from torch import nn
 
 
+
+
+##### TO CHECK ###############################################################################################
 class SupConLoss(nn.Module):
     """Supervised Contrastive Learning: https://arxiv.org/pdf/2004.11362.pdf.
     It also supports the unsupervised contrastive loss in SimCLR"""
@@ -172,10 +179,9 @@ class PatchNCELoss(nn.Module):
         loss = self.cross_entropy_loss(predictions, torch.zeros(predictions.size(0), dtype=torch.long,
                                                         device=feat_q.device))
         
-        
         return loss
         
-        
+###########PICAI LOSSS##########################################################""""        
 class FocalLossBin(nn.Module):
     """Focal loss function for binary segmentation."""
 
@@ -205,3 +211,30 @@ class FocalLossBin(nn.Module):
             loss = loss.sum()
 
         return loss
+
+#################################################
+
+
+
+##replace FocalLoss by fixed implemetation (and set smooth=0 in that one?)
+class FL_and_CE_loss(nn.Module):
+    def __init__(self, fl_kwargs=None, ce_kwargs=None, alpha=0.5,apply_nonlin=nn.Softmax(dim=1), aggregate="sum"):
+        super(FL_and_CE_loss, self).__init__()
+        if fl_kwargs is None:
+            fl_kwargs = {}
+        if ce_kwargs is None:
+            ce_kwargs = {}
+
+        self.aggregate = aggregate
+        self.fl = FocalLoss(apply_nonlin=apply_nonlin, **fl_kwargs)
+        self.ce = RobustCrossEntropyLoss(**ce_kwargs)
+        self.alpha = alpha
+
+    def forward(self, net_output, target):
+        fl_loss = self.fl(net_output, target)
+        ce_loss = self.ce(net_output, target)
+        if self.aggregate == "sum":
+            result = self.alpha*fl_loss + (1-self.alpha)*ce_loss
+        else:
+            raise NotImplementedError("nah son")
+        return result

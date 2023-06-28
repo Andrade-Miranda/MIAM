@@ -158,10 +158,11 @@ def evaluate_(data_loader, model, device, use_amp=False):
 
 
 
-def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, args, tracking_metrics, writer,wandb_logger):
+def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, args, tracking_metrics, writer,wandb_logger,Config):
     """Optimize model x N training steps per epoch + update learning rate"""
 
     train_loss, step = 0,  0
+    trainingKeys=[]
     start_time = time.time()
     epoch = tracking_metrics['epoch']
     if  args.enable_wandb: 
@@ -175,6 +176,7 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
         except Exception:
             inputs = torch.from_numpy(batch_data['image']).to(args.device)
             labels = torch.from_numpy(batch_data['label']).to(args.device)
+        trainingKeys.append(batch_data['keys'])
 
         if args.VAL_AMP:
             with torch.cuda.amp.autocast():
@@ -184,6 +186,11 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
             outputs = model(inputs)
             loss = loss_func(outputs, labels)   
         train_loss += loss.item()
+
+        if labels.shape[1]==1:
+            labels = F.one_hot(labels[:, 0, ...].long(), num_classes=args.output_nc).float()
+            labels = torch.moveaxis(labels, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
+        Config.Config.dice_metricTrain(Config.Config.post_trans(outputs),labels)
 
         ### temporal setting to track image
         # import matplotlib.pyplot as plt
@@ -196,22 +203,22 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
         # fig.add_subplot(rows, columns, 2)
         # plt.imshow(batch_data['image'][1,0,10,:,:],cmap='gray')
         # fig.add_subplot(rows, columns, 3)
-        # plt.imshow(batch_data['label'][0,1,10,:,:],cmap='gray')
+        # plt.imshow(labels[0,0,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
         # fig.add_subplot(rows, columns, 4)
-        # plt.imshow(batch_data['label'][1,1,10,:,:],cmap='gray')
+        # plt.imshow(labels[1,0,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
         # fig.add_subplot(rows, columns, 5)
-        # plt.imshow(batch_data['label'][0,-1,10,:,:],cmap='gray')
+        # plt.imshow(labels[0,-1,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
         # fig.add_subplot(rows, columns, 6)
-        # plt.imshow(batch_data['label'][1,-1,10,:,:],cmap='gray')
+        # plt.imshow(labels[1,-1,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
         # fig.add_subplot(rows, columns, 7)
-        # plt.imshow(outputs[0,1,10,:,:].detach().cpu().numpy(),cmap='gray')
+        # plt.imshow(Config.Config.post_trans(outputs)[0,0,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
         # fig.add_subplot(rows, columns, 8)
-        # plt.imshow(outputs[1,1,10,:,:].detach().cpu().numpy(),cmap='gray')
+        # plt.imshow(Config.Config.post_trans(outputs)[1,0,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
         # fig.add_subplot(rows, columns, 9)
-        # plt.imshow(outputs[0,-1,10,:,:].detach().cpu().numpy(),cmap='gray')
+        # plt.imshow(Config.Config.post_trans(outputs)[0,-1,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
         # fig.add_subplot(rows, columns, 10)
-        # plt.imshow(outputs[1,-1,10,:,:].detach().cpu().numpy(),cmap='gray')
-        # plt.savefig(args.out_dir+'/'+'train/'+batch_data['keys'][0]+'_'+batch_data['keys'][1]+'_train')
+        # plt.imshow(Config.Config.post_trans(outputs)[1,-1,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
+        # plt.savefig(args.out_dir+'/'+'train/'+batch_data['keys'][0]+'_'+batch_data['keys'][1]+'_'+str(epoch)+'_train')
         ######
 
         # backpropagate + optimize
@@ -237,23 +244,27 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
 
     # track training metrics
     train_loss /= step
+    DSCTrain=Config.Config.dice_metricTrain.aggregate().item()
     tracking_metrics['train_loss'] = train_loss
     writer.add_scalar("train_loss", train_loss, epoch+1)
-    
-    #if  args.enable_wandb:
-        #log train_loss averaged over epoch, updated_lr and epoch  to wandb
-    #    wandb_logger.log({"train/loss_epoch":train_loss})
+
+    #🐝
+    if  args.enable_wandb:
+        wandb_logger.log({"train/loss_epoch":train_loss,
+                          "train/DSC_epoch":DSCTrain})
+
     
     print("-" * 100)
     print(f"Epoch {epoch + 1}/{args.epochs} (Train. Loss: {train_loss:.4f}; \
-        Time: {int(time.time()-start_time)}sec; Steps Completed: {step})", flush=True)
+        Time: {int(time.time()-start_time)}; DSC Train: {DSCTrain:.5f}; \
+        sec; Steps Completed: {step})", flush=True)
+    Config.Config.dice_metricTrain.reset()
 
     return model, optimizer, train_gen, tracking_metrics, writer,wandb_logger
 
 
 def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics, writer,wandb_logger,Config):
     """Validate model per N epoch + export model weights"""
-    post_trans = Config.Config.post_trans
     all_valid_preds, all_valid_labels,all_valid_keys,val_loss,val_dice = [], [],[], 0,[]
     epoch, f = tracking_metrics['epoch'], tracking_metrics['fold_id']
     step=0
@@ -271,68 +282,68 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
         valloss = loss_func(outputs, valid_labels)# tomo el zero para poder hacer one-hot
         val_loss += valloss.item()
 
+        if valid_labels.shape[1]==1:
+            valid_labels = F.one_hot(valid_labels[:, 0, ...].long(), num_classes=args.output_nc).float()
+            valid_labels = torch.moveaxis(valid_labels, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
+        Config.Config.dice_metricVal(Config.Config.post_trans(outputs),valid_labels)#one-hot format
+
         # test-time augmentation
-        valid_images = [valid_images, torch.flip(valid_images, [4]).to(args.device)]
+        #valid_images = [valid_images, torch.flip(valid_images, [4]).to(args.device)]
 
         # aggregate all validation predictions
         # gaussian blur to counteract checkerboard artifacts in
         # predictions from the use of transposed conv. in the U-Net
-        preds = [
-            torch.sigmoid(model(x))[:,-1, ...].detach().cpu().numpy()
-            for x in valid_images
-        ]
+        # preds = [
+        #     torch.sigmoid(model(x))[:,-1, ...].detach().cpu().numpy()
+        #     for x in valid_images
+        # ]
 
         # revert horizontally flipped tta image
-        preds[1] = np.flip(preds[1], [3])
+        #preds[1] = np.flip(preds[1], [3])
 
         # gaussian blur to counteract checkerboard artifacts in
         # predictions from the use of transposed conv. in the U-Net
-        all_valid_preds += [
-            np.mean([
-                gaussian_filter(x, sigma=1.5)
-                for x in preds
-            ], axis=0)   #append to the list the validation prediction
-        ]
+        # all_valid_preds += [
+        #     np.mean([
+        #         gaussian_filter(x, sigma=1.5)
+        #         for x in preds
+        #     ], axis=0)   #append to the list the validation prediction
+        # ]
         
-        all_valid_labels += [valid_labels.cpu().numpy()[:, -1, ...]] #append to the list the validation true label
-        pred_bin=post_trans(all_valid_preds[-1])
-        Config.Config.dice_metric(y_pred=torch.from_numpy(pred_bin[:,None,...].detach().numpy()), y=torch.from_numpy(all_valid_labels[-1][:,None,...]))#calculate_dsc(all_valid_preds[-1],all_valid_labels[-1])
-        all_valid_keys += [valid_data['keys']]
+        all_valid_labels += [valid_labels[:, -1, ...].detach().cpu().numpy()] #append to the list the validation true label
+        pred_bin=Config.Config.post_trans(outputs)[:, -1, ...]
+        all_valid_preds += [torch.sigmoid(outputs)[:, -1, ...].detach().cpu().numpy()]
+        all_valid_keys += [i for i in valid_data['keys']]
 
         ### temporal setting to track image
         # import matplotlib.pyplot as plt
         # plt.matplotlib.use('Agg')
         # fig = plt.figure(figsize=(8, 8))
         # columns = 2
-        # rows = 4
+        # rows = 3
         # fig.add_subplot(rows, columns, 1)
         # plt.imshow(valid_data['image'][0,0,10,:,:],cmap='gray')
         # fig.add_subplot(rows, columns, 2)
         # plt.imshow(valid_data['image'][1,0,10,:,:],cmap='gray')        
         # fig.add_subplot(rows, columns, 3)
-        # plt.imshow(valid_data['label'][0,1,10,:,:],cmap='gray')
+        # plt.imshow(valid_labels[0,-1,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
         # fig.add_subplot(rows, columns, 4)
-        # plt.imshow(valid_data['label'][1,1,10,:,:],cmap='gray')
+        # plt.imshow(valid_labels[1,-1,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
         # fig.add_subplot(rows, columns, 5)
-        # plt.imshow(valid_data['label'][0,-1,10,:,:],cmap='gray')
+        # plt.imshow(pred_bin[0,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
         # fig.add_subplot(rows, columns, 6)
-        # plt.imshow(valid_data['label'][1,-1,10,:,:],cmap='gray')
-        # fig.add_subplot(rows, columns, 7)
-        # plt.imshow(pred_bin[0,10,:,:].detach().numpy(),cmap='gray')
-        # fig.add_subplot(rows, columns, 8)
-        # plt.imshow(pred_bin[1,10,:,:].detach().numpy(),cmap='gray')
-        # plt.savefig(args.out_dir+'/'+'val/'+valid_data['keys'][0]+'_'+valid_data['keys'][1]+'_val')
+        # plt.imshow(pred_bin[1,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
+        # plt.savefig(args.out_dir+'/'+'val/'+valid_data['keys'][0]+'_'+valid_data['keys'][1]+'_'+str(epoch)+'_val')
         ######
 
         if step >= args.num_validation_steps_per_epoch: 
             break
 
-    val_dice.append(Config.Config.dice_metric.aggregate().item())
+    DSC_val=Config.Config.dice_metricVal.aggregate().item()
     # track validation metrics
     valid_metrics = evaluate(y_det=iter(np.concatenate([x for x in np.array(all_valid_preds)], axis=0)),
                              y_true=iter(np.concatenate([x for x in np.array(all_valid_labels)], axis=0)),
-                             #subject_list=all_valid_keys,
-                             #num_parallel_calls=1,
+                             subject_list=all_valid_keys,
                              y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0])
 
     num_pos = int(np.sum([np.max(y) for y in np.concatenate(
@@ -355,7 +366,7 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
     
     tracking_metrics['all_valid_metrics_ranking'].append(valid_metrics.score)
     tracking_metrics['all_valid_loss'].append(val_loss/step)
-    tracking_metrics['all_valid_metrics_Dice'].append(val_dice[-1])
+    tracking_metrics['all_valid_metrics_Dice'].append(DSC_val)
 
 
     # export train-time + validation metrics as .xlsx sheet
@@ -384,7 +395,7 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
     writer.add_scalar("valid_ap",      valid_metrics.AP,    epoch+1)
     writer.add_scalar("valid_ranking", valid_metrics.score, epoch+1)
     writer.add_scalar("val_loss", val_loss/step, epoch+1)
-    writer.add_scalar("val_dice", val_dice[-1], epoch+1)
+    writer.add_scalar("val_dice", DSC_val, epoch+1)
     
     #🐝
     if  args.enable_wandb:
@@ -393,7 +404,7 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
         wandb_logger.log({"val_loss":tracking_metrics['all_valid_loss'][-1],
                           "valid_auroc":valid_metrics.auroc,
                           "valid_ap":valid_metrics.AP,
-                          "valid_dice":tracking_metrics['all_valid_metrics_Dice'][-1],
+                          "valid_dice":DSC_val,
                           "valid_ranking":valid_metrics.score,
                           "roc" : wandb.plot.roc_curve([valid_metrics.case_target[s] for s in valid_metrics.subject_list],
                                                         [[1-valid_metrics.case_pred[s],valid_metrics.case_pred[s]] for s in valid_metrics.subject_list],
@@ -404,18 +415,16 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
                                                    labels=['Benign','Malign'],classes_to_plot=1,
                                                    title='Precision vs Recall Val')}) 
 
-
-
     print(f"Valid. Performance [Benign or Indolent PCa (n={num_neg}) \
         vs. csPCa (n={num_pos})]:\nRanking Score = {valid_metrics.score:.3f},\
         AP = {valid_metrics.AP:.3f}, AUROC = {valid_metrics.auroc:.3f}, \
-        DSC = {(val_dice[-1]):.5f}", flush=True)
+        DSC = {DSC_val:.5f}", flush=True)
     
-    Config.Config.dice_metric.reset()
+    Config.Config.dice_metricVal.reset()
 
     # store model checkpoint if validation metric improves
     if valid_metrics.score > tracking_metrics['best_metric']:#valid_metrics.score
-        tracking_metrics['best_metric'] = val_dice[-1]#valid_metrics.score#val_dice/step #valid_metrics.score
+        tracking_metrics['best_metric'] = valid_metrics.score#val_dice[-1]#valid_metrics.score#val_dice/step #valid_metrics.score
         tracking_metrics['best_metric_epoch'] = epoch + 1
         
         weights_file = Path(args.expr_dir) / "BestCHK.pth"
@@ -449,8 +458,7 @@ def test_model(model, test_gen,datalen, args, trainConfig,wandb_logger):
         table = wandb.Table(columns=columns)
 
     """Validate model per N epoch + export model weights"""
-    post_trans = trainConfig.Config.post_trans
-    all_valid_preds, all_valid_labels,all_valid_keys,val_dice = [],[],[], []
+    all_valid_preds, all_valid_labels,all_valid_keys,val_dice = [],[],[],[]
     last_metrics={}
     last_metrics['Val_Dice']={}
     #args.device='cpu'
@@ -477,39 +485,44 @@ def test_model(model, test_gen,datalen, args, trainConfig,wandb_logger):
                 valid_images = torch.from_numpy(valid_data['image']).to(args.device)
                 valid_labels = torch.from_numpy(valid_data['label']).to(args.device)
             
-            fn = valid_data['keys'][-1]
-
+            outputs=trainConfig.Config.inference(valid_images)
+            if valid_labels.shape[1]==1:
+                valid_labels = F.one_hot(valid_labels[:, 0, ...].long(), num_classes=args.output_nc).float()
+                valid_labels = torch.moveaxis(valid_labels, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
+            trainConfig.Config.dice_metricTest(trainConfig.Config.post_trans(outputs),valid_labels)#one-hot format
+            
         # test-time augmentation
-            valid_images = [valid_images, torch.flip(valid_images, [4]).to(args.device)]
+        #    valid_images = [valid_images, torch.flip(valid_images, [4]).to(args.device)]
 
         # aggregate all validation predictions
         # gaussian blur to counteract checkerboard artifacts in
         # predictions from the use of transposed conv. in the U-Net
-            preds = [
-                torch.sigmoid(trainConfig.Config.inference(x))[:, 1, ...].detach().cpu().numpy()
-                for x in valid_images
-            ]
+        #    preds = [
+        #        torch.sigmoid(trainConfig.Config.inference(x))[:, 1, ...].detach().cpu().numpy()
+        #        for x in valid_images
+        #    ]
 
         # revert horizontally flipped tta image
-            preds[1] = np.flip(preds[1], [3])
+        #    preds[1] = np.flip(preds[1], [3])
 
         # gaussian blur to counteract checkerboard artifacts in
         # predictions from the use of transposed conv. in the U-Net
-            all_valid_preds += [
-            np.mean([
-                gaussian_filter(x, sigma=1.5)
-                for x in preds
-            ], axis=0)   #append to the list the validation prediction
-            ]
+        #    all_valid_preds += [
+        #    np.mean([
+        #        gaussian_filter(x, sigma=1.5)
+        #       for x in preds
+        #    ], axis=0)   #append to the list the validation prediction
+        #    ]
+            all_valid_labels += [valid_labels[:, -1, ...].detach().cpu().numpy()] #append to the list the validation true label
+            pred_bin=trainConfig.Config.post_trans(outputs)[:, -1, ...]
+            all_valid_preds += [torch.sigmoid(outputs)[:, -1, ...].detach().cpu().numpy()]
+            fn = valid_data['keys'][-1]
+            all_valid_keys += [fn]
 
-            all_valid_labels += [valid_labels.cpu().numpy()[:, -1, ...]] #append to the list the validation true label
-            pred_bin=post_trans(all_valid_preds[-1])
-            trainConfig.Config.dice_metricTest(y_pred=torch.from_numpy(pred_bin[:,None,...].detach().numpy()), y=torch.from_numpy(all_valid_labels[-1][:,None,...]))
             dscScore=trainConfig.Config.dice_metricTest.get_buffer()[-1]
             last_metrics['Val_Dice'][valid_data['keys'].tolist()[-1]]=str(dscScore)
             val_dice +=[dscScore]
-            all_valid_keys += [valid_data['keys'].tolist()[-1]]
-            print(f"Number:{len(all_valid_keys)} CaseID:{valid_data['keys'].tolist()[-1]} DSC:{np.round(dscScore,4)}")
+            print(f"Number:{len(all_valid_keys)} CaseID:{all_valid_keys[-1]} DSC:{dscScore.item():.4f}")
 
             if args.enable_wandb:
                 # log last 20 slices of each 3D image
@@ -546,8 +559,9 @@ def test_model(model, test_gen,datalen, args, trainConfig,wandb_logger):
         wandb.log({"ValBar/plot" : wandb.plot.bar(table, "CasesID", "DSC",
                                  title="Val cases vs DSC bar")})
 
-    valid_metrics = evaluate(y_det=iter([x[None,...].resize(args.imageSize) for x in np.array([x[0] for x in all_valid_preds],dtype=object)]),
-                             y_true=iter([x[None,...].resize(args.imageSize) for x in np.array([x[0] for x in all_valid_labels],dtype=object)]),
+    valid_metrics = evaluate(y_det=iter(np.concatenate([x for x in np.array([x[0] for x in all_valid_preds],dtype=object)])),
+                             y_true=iter(np.concatenate([x.resize(args.imageSize) for x in np.array([x[0] for x in all_valid_labels],dtype=object)])),
+                             subject_list=all_valid_keys,
                              y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0])
 
     

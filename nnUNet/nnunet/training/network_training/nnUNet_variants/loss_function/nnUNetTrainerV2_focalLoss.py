@@ -12,8 +12,8 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from nnunet.training.loss_functions.focal_loss import FocalLossV2
-from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
+from nnUNet.nnunet.training.loss_functions.focal_loss import FocalLoss
+from nnUNet.nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
 from torch import nn
 
 
@@ -23,6 +23,6 @@ class nnUNetTrainerV2_SegLoss_Focal(nnUNetTrainerV2):
         super().__init__(plans_file, fold, output_folder, dataset_directory, batch_dice, stage,
                                               unpack_data, deterministic, fp16)
         print("Setting up self.loss = Focal_loss({'alpha':0.75, 'gamma':2, 'smooth':1e-5})")
-        self.loss = FocalLossV2(apply_nonlin=nn.Softmax(dim=1), **{'alpha':0.5, 'gamma':2, 'smooth':1e-5})
+        self.loss = FocalLoss(apply_nonlin=nn.Softmax(dim=1), **{'alpha':0.5, 'gamma':2, 'smooth':1e-5})
 
 
