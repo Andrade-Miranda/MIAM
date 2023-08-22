@@ -117,8 +117,8 @@ class nnUNetDataset(BaseDataset):
         "additive_brightness_p_per_channel": 0.5,
         "additive_brightness_mu": 0.0,
         "additive_brightness_sigma": 0.1,
-
-        "num_threads": 12 if 'nnUNet_n_proc_DA' not in os.environ else int(os.environ['nnUNet_n_proc_DA']),
+        #opt.num_threads
+        "num_threads": opt.num_threads if 'nnUNet_n_proc_DA' not in os.environ else int(os.environ['nnUNet_n_proc_DA']),
         "num_cached_per_thread": 1,
         }
 
@@ -150,7 +150,7 @@ class nnUNetDataset(BaseDataset):
         
         #default setting nnUNET dataloading
         self.pad_all_sides = None
-        self.oversample_foreground_percent = 0.33#0.33
+        self.oversample_foreground_percent = 0.66#0.33
         
         
         #check if I have to fuse region, this is particular useful for brats dataset

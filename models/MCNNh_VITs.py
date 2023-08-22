@@ -39,12 +39,12 @@ class MultiCNNHeavy_VITsingle(nn.Module):
         num_layers=opt.num_layers
         pos_embed=opt.pos_embed
         norm_name=opt.norm_name
-        filters_Encoder=opt.filters_Encoder
+        filters_Encoder=opt.filters_Encoder[:-1]
         res_block=opt.res_block
         dropout_rate= opt.dropout_rate
         spatial_dims= opt.spatial_dims
-        kernel_sizes=opt.conv_kernel_sizes
-        stride=opt.pool_op_kernel_sizes
+        kernel_sizes=opt.conv_kernel_sizes[:-1]
+        stride=opt.pool_op_kernel_sizes[:-1]
         self.opt=opt
         
         self.numModal=in_channels #gloabal variable to keep the number of modalities
@@ -67,7 +67,7 @@ class MultiCNNHeavy_VITsingle(nn.Module):
         """
         super(MultiCNNHeavy_VITsingle,self).__init__()
         
-        
+
         if not (0 <= dropout_rate <= 1):
             raise ValueError("dropout_rate should be between 0 and 1.")
         
@@ -92,7 +92,14 @@ class MultiCNNHeavy_VITsingle(nn.Module):
         """ -------------------VIT encoders------------------------------- """      
         if hidden_size % num_heads != 0:
             raise ValueError("hidden_size should be divisible by num_heads.")
-            
+        
+        a,b,c=0,0,0
+        for i,j,k in self.opt.pool_op_kernel_sizes[:-1]:
+            if i==2: a+=1 
+            if j==2: b+=1 
+            if k==2: c+=1
+        self.opt.num_pool_per_axis=[a,b,c]
+
         self.num_layers = num_layers
         downfactor=[int(2**(i)) for i in self.opt.num_pool_per_axis] #for extra maxpooling
         img_size = tuple([math.ceil((x/downfactor[i])) for i,x in enumerate(img_size)])
@@ -108,7 +115,7 @@ class MultiCNNHeavy_VITsingle(nn.Module):
             in_channels=filters_Encoder[-1],
             img_size=img_size,
             patch_size=self.patch_size,
-            hidden_size=hidden_size,
+            hidden_size=hidden_size*self.numModal,
             mlp_dim=mlp_dim,
             pos_embed=pos_embed,
             num_layers=self.num_layers,
@@ -119,22 +126,22 @@ class MultiCNNHeavy_VITsingle(nn.Module):
             fusion=self.opt.Earlyfusion
         )
         """ ------------------------------------------------------------- """  
-        self.ProjShared=FusedGatedUnit(hidden_size,
-               hidden_size,in_channels)
+        self.ProjShared=FusedGatedUnit(hidden_size*self.numModal,
+               hidden_size*self.numModal,in_channels)
         
         
         """ -------------------CNN decoders------------------------------- """
         from copy import deepcopy
         filters_EncVit=list(deepcopy(filters_Encoder))
-        filters_EncVit[-1]=hidden_size//self.numModal
+        filters_EncVit.append(hidden_size)
         self.decoder=CNN_decoder(
                    spatial_dims=spatial_dims,
                    num_modality=in_channels,
                    features=tuple(filters_EncVit),
                    norm_name=norm_name,
                    res_block=res_block,
-                   kernel_sizes=kernel_sizes,
-                   stride=stride,            
+                   kernel_sizes=kernel_sizes+[[3,3,3]],
+                   stride=stride+[[1,1,1]],             
                    )
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0] * in_channels, out_channels=out_channels)
         """ ------------------------------------------------------------- """      
@@ -145,7 +152,7 @@ class MultiCNNHeavy_VITsingle(nn.Module):
             self.reshapeConv=get_conv_layer(
                 spatial_dims=spatial_dims,
                 in_channels=hidden_size*self.numModal,
-                out_channels=hidden_size,
+                out_channels=hidden_size*self.numModal,
                 kernel_size=3,
                 stride=self.patch_size,
                 conv_only=True,
@@ -176,12 +183,12 @@ class MultiCNNHeavy_VITsingle(nn.Module):
                 skip.append(encModal[j][i])
             skip_connections.append(torch.cat(skip,1))
         
-        outViT, hidden_states_out = self.vit(skip)
+        outViT, _ = self.vit(skip)
         outViT = einops.rearrange(outViT, "b (Np n) H -> b n Np H",n=numnoda)
         outViT=self.ProjShared(outViT)
-        outViT=self.proj_feat(outViT, self.hidden_size, self.feat_size)
+        outViT=self.proj_feat(outViT, self.hidden_size*self.numModal, self.feat_size)
 
-        skip_connections[-1]=outViT.clone()
+        skip_connections.append(outViT)
         output=self.decoder(skip_connections)
         
         return self.out(output[-1])

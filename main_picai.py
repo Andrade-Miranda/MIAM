@@ -6,7 +6,7 @@ from options.train_options import TrainOptions
 from data.data_loader import CreateDataLoader
 from config.train_setup import TrainSetup
 from models.models import create_model
-from util.engine import optimize_model,validate_model,test_model
+from util.engine import optimize_model,validate_model,test_Predict_Rank
 from timm.utils import get_state_dict
 
 from monai.utils import set_determinism
@@ -25,7 +25,6 @@ if opt.Deterministic:
 """ --------load Data --------------- """ 
 data_loader = CreateDataLoader(opt)
 train_loader,val_loader,test_loader,datalen = data_loader.load_data()
-opt.num_validation_steps_per_epoch = 10//opt.Val_batchSize#datalen[1]datalen[1]//opt.Val_batchSize #50//opt.Val_batchSize#datalen[1]//opt.Val_batchSize #
 print('#Data loader scheme created')  
 """-----------------------------------"""
     
@@ -79,7 +78,7 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
                 Config=trainConfig,
                 )
 
-test_metrics=test_model(model,test_loader,datalen[1], opt, trainConfig,opt.wandb_logger)
+test_Predict_Rank(model,opt,test_loader,datalen[1])
 
 print(
     f"Training Complete! Peak Validation Ranking Score: {trainConfig.Config.tracking_metrics['best_metric']:.4f} "

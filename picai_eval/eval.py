@@ -214,7 +214,7 @@ def make_evaluation_iterator(
                 for (y_det_case, y_true_case, weight, idx) in zip(y_det, y_true, sample_weight, subject_list)
             }
 
-            iterator = concurrent.futures.as_completed(futures)
+            iterator = concurrent.futures.as_completed(futures,timeout=None)
     else:
         # process the cases sequentially
         def func(y_det_case, y_true_case, weight, idx):
@@ -387,7 +387,7 @@ def evaluate_folder(
     if label_extensions is None:
         label_extensions = [".nii.gz", ".nii", ".mha", ".mhd", ".npz", ".npy"]
     if detection_map_postfixes is None:
-        detection_map_postfixes = ["_detection_map"]
+        detection_map_postfixes =["_detection_map"]
         if y_true_dir != y_det_dir:
             # if annotation directory is specified, also look for [subject_id].nii.gz etc
             detection_map_postfixes += [""]

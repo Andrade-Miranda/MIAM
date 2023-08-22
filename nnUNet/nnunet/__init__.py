@@ -5,3 +5,5 @@ from __future__ import absolute_import
 #print("If you have questions or suggestions, feel free to open an issue at https://github.com/MIC-DKFZ/nnUNet\n")
 
 from . import *
+import os
+os.environ['OMP_NUM_THREADS']="1"

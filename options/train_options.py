@@ -6,7 +6,8 @@ class TrainOptions(BaseOptions):
         BaseOptions.initialize(self)
         self.parser.add_argument('--imageSize', type=int, nargs=3, default= 0, help='Image Size after pre-processing')
         self.parser.add_argument('--epochs', type=int, default=300, help='# of epochs')
-        self.parser.add_argument('--num_training_steps_per_epoch', type=int, default=100, help='# of steps per epoch')
+        self.parser.add_argument('--num_training_steps_per_epoch', type=int, default=250, help='# of steps per epoch')
+        self.parser.add_argument('--num_validation_steps_per_epoch', type=int, default=100, help='# of steps per epoch')
         self.parser.add_argument('--VAL_AMP',  dest='VAL_AMP', action='store_true',default=False, help='Automatic Mixed Precision package - torch.cuda.amp')
         self.parser.add_argument('--seed', type=int, default=12345, help='# of seed for deterministic training')
         self.parser.add_argument('--region', nargs='+', default=((1,4),(1,4,2),(4,)), help='segmentation regions to merge, default Brats')
@@ -53,31 +54,50 @@ class TrainOptions(BaseOptions):
                         help='LR scheduler (default: "cosine"')
         self.parser.add_argument('--lr', type=float, default=2e-4, metavar='LR',
                         help='learning rate (default: 2e-4)')
+        self.parser.add_argument('--sched-on-updates', action='store_true', default=False,
+                   help='Apply LR scheduler step on update instead of epoch end.')
+        self.parser.add_argument('--lr-base', type=float, default=0.1, metavar='LR',
+                   help='base learning rate: lr = lr_base * global_batch_size / base_size')
+        self.parser.add_argument('--lr-base-size', type=int, default=256, metavar='DIV',
+                   help='base learning rate batch size (divisor, default: 256).')
+        self.parser.add_argument('--lr-base-scale', type=str, default='', metavar='SCALE',
+                   help='base learning rate vs batch_size scaling ("linear", "sqrt", based on opt if empty)')
         self.parser.add_argument('--lr-noise', type=float, nargs='+', default=None, metavar='pct, pct',
-                        help='learning rate noise on/off epoch percentages')
+                   help='learning rate noise on/off epoch percentages')
         self.parser.add_argument('--lr-noise-pct', type=float, default=0.67, metavar='PERCENT',
-                        help='learning rate noise limit percent (default: 0.67)')
+                   help='learning rate noise limit percent (default: 0.67)')
         self.parser.add_argument('--lr-noise-std', type=float, default=1.0, metavar='STDDEV',
-                        help='learning rate noise std-dev (default: 1.0)')
-        self.parser.add_argument('--warmup-lr', type=float, default=1e-6, metavar='LR',
-                        help='warmup learning rate (default: 1e-6)')
-        self.parser.add_argument('--min-lr', type=float, default=1e-5, metavar='LR',
-                        help='lower lr bound for cyclic schedulers that hit 0 (1e-5)')
-        
-        self.parser.add_argument('--warmup_prefix', dest='warmup_prefix',action='store_true', 
-                                 default=False, help='Defaults to False. If set to True, then every new epoch number equals epoch = epoch - warmup_t')
-        self.parser.add_argument('--decay-epochs', type=float, default=30, metavar='N',
-                        help='epoch interval to decay LR')
-        self.parser.add_argument('--warmup-epochs', type=int, default=3, metavar='N',
-                        help='epochs to warmup LR, if scheduler supports')
-        self.parser.add_argument('--lr_cycle_limit', type=int, default=1, metavar='N',
-                        help='number maximun of cycles')
-        self.parser.add_argument('--cooldown-epochs', type=int, default=10, metavar='N',
-                        help='epochs to cooldown LR at min_lr, after cyclic schedule ends')
+                   help='learning rate noise std-dev (default: 1.0)')
+        self.parser.add_argument('--lr-cycle-mul', type=float, default=1.0, metavar='MULT',
+                   help='learning rate cycle len multiplier (default: 1.0)')
+        self.parser.add_argument('--lr-cycle-decay', type=float, default=0.5, metavar='MULT',
+                   help='amount to decay each learning rate cycle (default: 0.5)')
+        self.parser.add_argument('--lr-cycle-limit', type=int, default=1, metavar='N',
+                   help='learning rate cycle limit, cycles enabled if > 1')
+        self.parser.add_argument('--lr-k-decay', type=float, default=1.0,
+                   help='learning rate k-decay for cosine/poly (default: 1.0)')
+        self.parser.add_argument('--warmup-lr', type=float, default=1e-5, metavar='LR',
+                   help='warmup learning rate (default: 1e-5)')
+        self.parser.add_argument('--min-lr', type=float, default=0, metavar='LR',
+                   help='lower lr bound for cyclic schedulers that hit 0 (default: 0)')
+        self.parser.add_argument('--epoch-repeats', type=float, default=0., metavar='N',
+                   help='epoch repeat multiplier (number of times to repeat dataset epoch per train epoch).')
+        self.parser.add_argument('--start-epoch', default=None, type=int, metavar='N',
+                   help='manual epoch number (useful on restarts)')
+        self.parser.add_argument('--decay-milestones', default=[90, 180, 270], type=int, nargs='+', metavar="MILESTONES",
+                   help='list of decay epoch indices for multistep lr. must be increasing')
+        self.parser.add_argument('--decay-epochs', type=float, default=90, metavar='N',
+                   help='epoch interval to decay LR')
+        self.parser.add_argument('--warmup-epochs', type=int, default=5, metavar='N',
+                   help='epochs to warmup LR, if scheduler supports')
+        self.parser.add_argument('--warmup-prefix', action='store_true', default=False,
+                   help='Exclude warmup period from decay schedule.'),
+        self.parser.add_argument('--cooldown-epochs', type=int, default=0, metavar='N',
+                   help='epochs to cooldown LR at min_lr, after cyclic schedule ends')
         self.parser.add_argument('--patience-epochs', type=int, default=10, metavar='N',
-                        help='patience epochs for Plateau LR scheduler (default: 10')
-        self.parser.add_argument('--decay-rate', '--dr', type=float, default=1, metavar='RATE',
-                        help='LR decay rate (default: 0.1)')   
+                   help='patience epochs for Plateau LR scheduler (default: 10)')
+        self.parser.add_argument('--decay-rate', '--dr', type=float, default=0.1, metavar='RATE',
+                   help='LR decay rate (default: 0.1)')
     
         
     # distributed training parameters

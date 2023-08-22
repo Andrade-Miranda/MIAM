@@ -29,14 +29,14 @@ import json
 
 import numpy as np
 from batchgenerators.transforms.abstract_transforms import AbstractTransform
-
+#from batchgenerators.dataloading.single_threaded_augmenter import SingleThreadedAugmenter
 from batchgenerators.dataloading.multi_threaded_augmenter import MultiThreadedAugmenter
 from batchgenerators.transforms.abstract_transforms import Compose
 from batchgenerators.transforms.channel_selection_transforms import DataChannelSelectionTransform, \
     SegChannelSelectionTransform
 from batchgenerators.transforms.color_transforms import GammaTransform
 from batchgenerators.transforms.spatial_transforms import SpatialTransform, MirrorTransform
-from batchgenerators.transforms.utility_transforms import RemoveLabelTransform, RenameTransform, NumpyToTensor
+from batchgenerators.transforms.utility_transforms import RemoveLabelTransform, RenameTransform, NumpyToTensor,AppendChannelsTransform
 
 from batchgenerators.augmentations.utils import rotate_coords_3d, rotate_coords_2d
 
@@ -45,7 +45,7 @@ from nnUNet.nnunet.training.data_augmentation.custom_transforms import Convert3D
     MaskTransform, ConvertSegmentationToRegionsTransform
 from nnUNet.nnunet.training.data_augmentation.pyramid_augmentations import MoveSegAsOneHotToData, \
     ApplyRandomBinaryOperatorTransform, \
-    RemoveRandomConnectedComponentFromOneHotEncodingTransform, MoveChannelfromDataToSeg
+    RemoveRandomConnectedComponentFromOneHotEncodingTransform
 
 from nnUNet.nnunet.training.dataloading.dataset_loading import DataLoader3D, load_dataset
 from util.dataset_Testloading import DataLoaderTest3D
@@ -66,8 +66,10 @@ class nnUNetExtchanDataset(BaseDataset):
         
         self.opt=opt
         self.default_3D_augmentation_params = {
+            "AppendChannelsTransform":None,
+
             "selected_data_channels": None,
-            "selected_seg_channels": None,
+            "selected_seg_channels": None,#[0,1],
 
             "do_elastic": True,
             "elastic_deform_alpha": (0., 900.),
@@ -102,7 +104,7 @@ class nnUNetExtchanDataset(BaseDataset):
         "mask_was_used_for_normalization": None,
         "border_mode_data": "constant",
 
-        "all_segmentation_labels": [1],  # used for cascade
+        "all_segmentation_labels": None,  # used for cascade
         "move_last_seg_chanel_to_data": False,  # used for cascade
         "cascade_do_cascade_augmentations": False,  # used for cascade
         "cascade_random_binary_transform_p": 0.4,
@@ -117,8 +119,8 @@ class nnUNetExtchanDataset(BaseDataset):
         "additive_brightness_p_per_channel": 0.5,
         "additive_brightness_mu": 0.0,
         "additive_brightness_sigma": 0.1,
-
-        "num_threads": 12 if 'nnUNet_n_proc_DA' not in os.environ else int(os.environ['nnUNet_n_proc_DA']),
+        #opt.num_threads
+        "num_threads": opt.num_threads if 'nnUNet_n_proc_DA' not in os.environ else int(os.environ['nnUNet_n_proc_DA']),
         "num_cached_per_thread": 1,
         }
 
@@ -150,7 +152,7 @@ class nnUNetExtchanDataset(BaseDataset):
         
         #default setting nnUNET dataloading
         self.pad_all_sides = None
-        self.oversample_foreground_percent = 0.5#0.33
+        self.oversample_foreground_percent = 0.66#0.33
         
         
         #check if I have to fuse region, this is particular useful for brats dataset
@@ -191,11 +193,17 @@ class nnUNetExtchanDataset(BaseDataset):
         assert params.get('mirror') is None, "old version of params, use new keyword do_mirror"
         tr_transforms = []
 
+        #move the last channel of data to seg
+        if params.get("AppendChannelsTransform") is not None:
+            tr_transforms.append(AppendChannelsTransform('data','seg',params.get("AppendChannelsTransform"),False))
+
         if params.get("selected_data_channels") is not None:
             tr_transforms.append(DataChannelSelectionTransform(params.get("selected_data_channels")))
 
         if params.get("selected_seg_channels") is not None:
             tr_transforms.append(SegChannelSelectionTransform(params.get("selected_seg_channels")))
+
+
 
         # don't do color augmentations while in 2d mode with 3d data because the color channel is overloaded!!
         if params.get("dummy_2D") is not None and params.get("dummy_2D"):
@@ -203,9 +211,6 @@ class nnUNetExtchanDataset(BaseDataset):
             patch_size_spatial = patch_size[1:]
         else:
             patch_size_spatial = patch_size
-        #move the last channel of data to seg
-        tr_transforms.append(MoveChannelfromDataToSeg(3,'data','seg'))
-        #tr_transforms.append(MoveSegAsOneHotToData(3,params.get("all_segmentation_labels"),'data','seg'))
 
         tr_transforms.append(SpatialTransform(
             patch_size_spatial, patch_center_dist_from_border=None, do_elastic_deform=params.get("do_elastic"),
@@ -233,7 +238,6 @@ class nnUNetExtchanDataset(BaseDataset):
             mask_was_used_for_normalization = params.get("mask_was_used_for_normalization")
             tr_transforms.append(MaskTransform(mask_was_used_for_normalization, mask_idx_in_seg=0, set_outside_to=0))
 
-        #move the last channel of seg back to data
         tr_transforms.append(RemoveLabelTransform(-1, 0))
 
         if params.get("move_last_seg_chanel_to_data") is not None and params.get("move_last_seg_chanel_to_data"):
@@ -251,20 +255,19 @@ class nnUNetExtchanDataset(BaseDataset):
                     p_per_sample=params.get("cascade_remove_conn_comp_p"),
                     fill_with_other_class_p=params.get("cascade_remove_conn_comp_max_size_percent_threshold"),
                     dont_do_if_covers_more_than_X_percent=params.get("cascade_remove_conn_comp_fill_with_other_class_p")))
-
-        tr_transforms.append(MoveChannelfromDataToSeg(1,'seg','data'))
-        #tr_transforms.append(MoveSegAsOneHotToData(1,params.get("all_segmentation_labels"),'seg','data'))
+        
+        
         tr_transforms.append(RenameTransform('seg', 'label', True))
         tr_transforms.append(RenameTransform('data', 'image', True))
 
         if regions is not None:
             tr_transforms.append(ConvertSegmentationToRegionsTransform(regions, 'label', 'label'))
             #tr_transforms.append(ConvertSegToRegionsTransform(regions,keys="label"))
-
+        
+        tr_transforms.append(AppendChannelsTransform('label','image',[0],True))
         tr_transforms.append(NumpyToTensor(['image', 'label'], 'float'))
 
         tr_transforms = Compose(tr_transforms)
-
 
         batchgenerator_train = MultiThreadedAugmenter(dataloader_train, tr_transforms, params.get('num_threads'),
                                                      params.get("num_cached_per_thread"), seeds=self.seeds_train,
@@ -287,10 +290,11 @@ class nnUNetExtchanDataset(BaseDataset):
             val_transforms.append(ConvertSegmentationToRegionsTransform(regions, 'label', 'label'))
             #val_transforms.append(ConvertSegToRegionsTransform(regions,keys="label"))
 
+        val_transforms.append(AppendChannelsTransform('label','image',[0],True))
         val_transforms.append(NumpyToTensor(['image', 'label'], 'float'))
         val_transforms = Compose(val_transforms)
 
-        batchgenerator_test = DataLoaderTest3D(self.dataset_val,val_transforms,self.opt.Val_batchSize)
+        batchgenerator_test = DataLoaderTest3D(self.dataset_val,val_transforms,1)
         if self.opt.Deterministic:
             seeds=self.seeds_val[:int(max(params.get('num_threads') // 2, 1))]
         else:

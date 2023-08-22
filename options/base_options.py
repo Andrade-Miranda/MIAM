@@ -22,6 +22,7 @@ class BaseOptions():
         self.parser.add_argument('--Val_batchSize', type=int, default=1, help='validation batch size')
         self.parser.add_argument('--val_interval', type=int, default=1, help='# interval to do the evaluation')
         self.parser.add_argument('--validate_min_epoch', type=int, default=1, help='# value to start the evaluation')
+        self.parser.add_argument('--max_num_threads', type=int, default=30, help='# value max of thread')
         self.parser.add_argument('--update_freq', type=int, default=1, help='# gradient accumulation steps')
         self.parser.add_argument('--batchSize', type=int, default=2, help='input batch size')
         self.parser.add_argument('--input_nc', type=int, default=4, help='# of input image channels')
@@ -78,7 +79,17 @@ class BaseOptions():
             os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
         else: 
             self.opt.device=torch.device("cuda")
+            torch.backends.cudnn.benchmark = True
         ########################
+
+        ##############CPU specifications###""""""""
+        # os.sched_getaffinity(0) is not supported by all operating systems
+        try:
+            self.opt.num_threads = np.min([len(os.sched_getaffinity(0)), self.opt.max_num_threads])
+        except:
+            self.opt.num_threads= self.opt.max_num_threads
+        print(f" Total number of Threads: {self.opt.num_threads}",flush=True)
+        ###################"#######################
         
         str_ids = self.opt.gpu_ids.split(',')
         self.opt.gpu_ids = []
@@ -110,8 +121,8 @@ class BaseOptions():
             self.opt.filters_Encoder=features[:len(self.opt.conv_kernel_sizes)]
         else:# tengo que cambiarlo para que dependa del imageSize y que tenga un valor minimo de 8,8,8 (autoconfigurable para los modelos basados
             #en transformers) usar un downsampling menos del propuesto por nnunet
-            self.opt.num_pool_per_axis=[1,5,5]
-            self.opt.pool_op_kernel_sizes=[[1,1,1],[1, 2, 2], [1, 2, 2], [2, 2, 2], [1, 2, 2], [1, 2, 2]]
+            self.opt.num_pool_per_axis=[2,5,5]
+            self.opt.pool_op_kernel_sizes=[[1,1,1],[1, 2, 2], [2, 2, 2], [2, 2, 2], [1, 2, 2], [1, 2, 2]]
             self.opt.conv_kernel_sizes=[[1, 3, 3], [1, 3, 3], [3, 3, 3], [3, 3, 3],[3, 3, 3],[3, 3, 3]]
             self.opt.filters_Encoder=features[:len(self.opt.conv_kernel_sizes)]
         '-------------'
