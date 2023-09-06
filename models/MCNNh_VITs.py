@@ -20,7 +20,7 @@ from torch.nn import init
 from util.util import print_network
 from util.block import FusedGatedUnit
 from .encoder import BasicUnetEnc
-from .decoder import CNN_decoder
+from .decoder import CNN_VIT_decoder
 import einops
 
   
@@ -127,21 +127,21 @@ class MultiCNNHeavy_VITsingle(nn.Module):
         )
         """ ------------------------------------------------------------- """  
         self.ProjShared=FusedGatedUnit(hidden_size*self.numModal,
-               hidden_size*self.numModal,in_channels)
+               hidden_size*self.numModal)
         
         
         """ -------------------CNN decoders------------------------------- """
         from copy import deepcopy
-        filters_EncVit=list(deepcopy(filters_Encoder))
+        filters_EncVit=list(deepcopy(filters_Encoder))[:-1]
         filters_EncVit.append(hidden_size)
-        self.decoder=CNN_decoder(
+        self.decoder=CNN_VIT_decoder(
                    spatial_dims=spatial_dims,
                    num_modality=in_channels,
                    features=tuple(filters_EncVit),
                    norm_name=norm_name,
                    res_block=res_block,
-                   kernel_sizes=kernel_sizes+[[3,3,3]],
-                   stride=stride+[[1,1,1]],             
+                   kernel_sizes=kernel_sizes,
+                   stride=stride,             
                    )
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0] * in_channels, out_channels=out_channels)
         """ ------------------------------------------------------------- """      
@@ -188,8 +188,7 @@ class MultiCNNHeavy_VITsingle(nn.Module):
         outViT=self.ProjShared(outViT)
         outViT=self.proj_feat(outViT, self.hidden_size*self.numModal, self.feat_size)
 
-        skip_connections.append(outViT)
-        output=self.decoder(skip_connections)
+        output=self.decoder(outViT,skip_connections)
         
         return self.out(output[-1])
     

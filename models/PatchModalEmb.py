@@ -57,7 +57,6 @@ class PatchModalEmbBlock(nn.Module):
         pos_embed: str,
         dropout_rate: float = 0.0,
         spatial_dims: int = 3,
-        modality: int=0,
     ) -> None:
         """
         Args:
@@ -131,12 +130,13 @@ class PatchModalEmbBlock(nn.Module):
                 nn.Linear(self.patch_dim, hidden_size),
             )
         self.position_embeddings = nn.Parameter(torch.zeros(1, self.n_patches, hidden_size))
-        self.segment_Embedding=nn.Parameter(torch.full((1, self.n_patches, hidden_size),float(modality)))
+        self.segment_Embedding=nn.ParameterList(nn.Parameter(torch.full((1, self.n_patches, hidden_size),float(i))) for i in range(numModal))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_size))
         
         self.dropout = nn.Dropout(dropout_rate)
         self.trunc_normal_(self.position_embeddings, mean=0.0, std=0.02, a=-2.0, b=2.0)
-        self.trunc_normal_(self.segment_Embedding, mean=0.0, std=0.02, a=-2.0, b=2.0)
+        for i in range(numModal):
+            self.trunc_normal_(self.segment_Embedding[i], mean=0.0, std=0.02, a=-2.0, b=2.0)
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -164,7 +164,7 @@ class PatchModalEmbBlock(nn.Module):
             tensor.clamp_(min=a, max=b)
             return tensor
 
-    def forward(self, x):
+    def forward(self, x,modality):
         if self.pos_embed == "conv" :
             x=self.patch_embeddings(x)
             x= x.flatten(2).transpose(-1, -2)
@@ -180,7 +180,7 @@ class PatchModalEmbBlock(nn.Module):
             x= x.flatten(2).transpose(-1, -2)
         else:
             x=self.patch_embeddings(x)     
-        embeddings = x + self.position_embeddings+self.segment_Embedding
+        embeddings = x + self.position_embeddings+self.segment_Embedding[modality]
         embeddings = self.dropout(embeddings)
         return embeddings
 

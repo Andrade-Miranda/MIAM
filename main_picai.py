@@ -52,10 +52,11 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
         tracking_metrics=trainConfig.Config.tracking_metrics,
         writer=opt.log_writer,
         wandb_logger=opt.wandb_logger,
-        Config=trainConfig
+        Config=trainConfig,
+        Debug=None
         )
     
-    if trainConfig.Config.lr_scheduler is not None:
+    if trainConfig.Config.lr_scheduler is not None and opt.sched!="poly":
         trainConfig.Config.lr_scheduler.step(epoch + 1)
 
     # ----------------------------------------------------------------------------------------------------------------------

@@ -164,10 +164,11 @@ def evaluate_(data_loader, model, device, use_amp=False):
 
 
 ###################TRaining scheme#############################################################################
-def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, args, tracking_metrics, writer,wandb_logger,Config):
+def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, args, tracking_metrics, writer,wandb_logger,Config,Debug=None):
     """Optimize model x N training steps per epoch + update learning rate"""
 
     train_loss, step = 0,  0
+    dice_loss,focal_loss=0,0
     trainingKeys=[]
     start_time = time.time()
     epoch = tracking_metrics['epoch']
@@ -188,16 +189,22 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
             labels = torch.from_numpy(batch_data['label']).to(args.device)
         trainingKeys.append(batch_data['keys'])
 
+        if Debug!=None:
+            Debug.segment_thumbnails(image=inputs[0][0:1],label=labels[0],frame_dim=1,savepath="/home/gustavo/test_images/",FigName=trainingKeys[step-1][0])
+            
+
         if args.VAL_AMP:
             with torch.cuda.amp.autocast():
                 outputs = model(inputs)
-                loss = loss_func(outputs, labels)
+                loss,dice_,focal_ = loss_func(outputs, labels)
         else: # full precision
             outputs = model(inputs)
-            loss = loss_func(outputs, labels)   
+            loss,dice_,focal_ = loss_func(outputs, labels)   
         train_loss += loss.item()
+        dice_loss+= dice_.item()
+        focal_loss+= focal_.item()
 
-        labels_ = F.one_hot(labels[:, -1, ...].long(), num_classes=2).float()
+        labels_ = F.one_hot(labels[:, -1, ...].long(), num_classes=args.output_nc).float()
         labels_ = torch.moveaxis(labels_, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
         Config.Config.dice_metricTrain(Config.Config.post_trans(outputs),labels_)
 
@@ -237,29 +244,37 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
             break
     
     # learning rate update and setup
-    lrupdate=optimizer.param_groups[0]['lr']
     if args.sched is not None:
-        lr_scheduler.step_update(num_updates=num_updates)
+        if args.sched=='poly':
+            lrupdate = lr_scheduler.step_update(epoch+1)
+            optimizer.param_groups[0]['lr'] = lrupdate
+        else:
+            lr_scheduler.step_update(num_updates=num_updates)
+            lrupdate=optimizer.param_groups[0]['lr']
         print(f"Learning Rate Updated! New Value: {lrupdate:.10}", flush=True)
     else:
-        print(f"Learning Rate fix: {lrupdate:.10}", flush=True)
+        print(f"Learning Rate fix: {args.lr:.10}", flush=True)
 
     # track training metrics
     train_loss /= step
+    dice_loss /= step
+    focal_loss /= step
+
     DSCTrain=Config.Config.dice_metricTrain.aggregate().item()
     tracking_metrics['train_loss'] = train_loss
     writer.add_scalar("train_loss", train_loss, epoch+1)
 
     #🐝
     if  args.enable_wandb:
-        wandb_logger.log({"train/loss_epoch":train_loss,
-                          "train/DSC_epoch":DSCTrain
-                          })
+        wandb_logger.log({"train/loss_epoch":train_loss},step=epoch)
+        wandb_logger.log({"train/DSC_epoch":DSCTrain},step=epoch)
+        wandb_logger.log({"lr/epoch":lrupdate},step=epoch)
 
     
     print("-" * 100)
-    print(f"Epoch {epoch + 1}/{args.epochs} (Train. Loss: {train_loss:.4f}; \
-        Time: {int(time.time()-start_time)}; DSC Train: {DSCTrain:.5f}; \
+    print(f"Epoch {epoch + 1}/{args.epochs} (Train. Total Loss: {train_loss:.4f}; Dice Loss: {dice_loss:.4f}; Focal Loss: {focal_loss:.4f}; \
+          DSC Train: {DSCTrain:.5f}; \
+        Time: {int(time.time()-start_time)}; \
         sec; Steps Completed: {step})", flush=True)
     Config.Config.dice_metricTrain.reset()
 
@@ -287,7 +302,7 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
             valid_labels = torch.from_numpy(valid_data['label']).to(args.device)
         
         outputs = model(valid_images)
-        valloss = loss_func(outputs, valid_labels)# tomo el zero para poder hacer one-hot
+        valloss,_,_ = loss_func(outputs, valid_labels)# tomo el zero para poder hacer one-hot
         val_loss += valloss.item()
 
         labels = F.one_hot(valid_labels[:, -1, ...].long(), num_classes=2).float()
@@ -509,8 +524,8 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
            
         del val_outputs
 
-    labels= [i for i in range(opt.output_nc+1)]
-    metricspercase = sg.write_metrics(labels=labels[-1:],
+    labels= [i for i in range(opt.output_nc)]
+    metricspercase = sg.write_metrics(labels=labels[1:],
                   gdth_path=join("./nnUNet/data/nnUnet_raw/nnUNet_raw_data",opt.dataroot,"labelsTr"),
                   pred_path=output_folder,
                   metrics = ['dice','msd', 'mdsd'],
@@ -568,11 +583,6 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
 
     print(f"Valid. Performance [Benign or Indolent PCa vs. csPCa]:\nRanking Score = {metrics.score:.3f},\
         AP = {metrics.AP:.3f}, AUROC = {metrics.auroc:.3f}", flush=True)
-
-
-
-
-
 
 
 

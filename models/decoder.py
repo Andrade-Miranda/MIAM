@@ -48,12 +48,46 @@ class CNN_decoder(nn.ModuleList):
             
     def forward(self, x):
         y=[]
+        x1=x[-1]
         for j in range(len(self.decoderList)):
-            x1 = self.decoderList[j](x[-j-1],x[-j-2])
+            x1 = self.decoderList[j](x1,x[-j-2])
             y.append(x1)
         return y   
 
+class CNN_VIT_decoder(nn.ModuleList):
 
+    def __init__(
+       self,
+       spatial_dims,
+       num_modality,
+       features,
+       norm_name,
+       res_block,
+       kernel_sizes,
+       stride, 
+
+    ):
+        super(CNN_VIT_decoder,self).__init__()
+        self.decoderList=nn.ModuleList()
+
+        for i in range(len(features)-1):
+            decoder = UnetrUpBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=features[-i-1]* num_modality,
+                    out_channels=features[-i-2] * num_modality,
+                    kernel_size=tuple(kernel_sizes[-i-1]),
+                    upsample_kernel_size= tuple(stride[-i-1]),
+                    norm_name=norm_name,
+                    res_block=res_block,
+                    )
+            self.decoderList.append(decoder)
+            
+    def forward(self, outvit,x):
+        y=[]
+        for j in range(len(self.decoderList)):
+            outvit = self.decoderList[j](outvit,x[-j-2])
+            y.append(outvit)
+        return y   
 
 class CNN_PuPMLA(nn.ModuleList):
 

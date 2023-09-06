@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 #from util.tsne import tsne
 import torch
 import math
+from monai.visualize import blend_images, matshow3d
+
 
 
 class VisualPlots():
@@ -36,7 +38,24 @@ class VisualPlots():
                 plt.imshow(img)
             
         plt.show()
-        plt.savefig(os.path.join(self.opt.out_dir,'PartialResults_'+str(slices)+'_'+str(epoch)+'.pdf'))                
+        plt.savefig(os.path.join(self.opt.out_dir,'PartialResults_'+str(slices)+'_'+str(epoch)+'.pdf'))
+
+    def segment_thumbnails(self,image,label,frame_dim,savepath,FigName):
+        ret = blend_images(image, label, alpha=0.6, cmap="hsv", rescale_arrays=False)
+        fig=matshow3d(
+                volume=ret,
+                fig=None,
+                title='example',
+                figsize=(100, 100),
+                every_n=1,
+                frame_dim=frame_dim,
+                channel_dim=0,
+                show=False,
+                cmap="gray",
+                vmin=-1,
+                vmax=1,
+                )
+        plt.savefig(savepath+FigName+'.pdf')                
             
     def save_Loss_MetricsBrats(self, epoch_loss_values,val_loss_values, metric_values_tumor, best_metric_epoch,best_metric,metric_values_tc,metric_values_wt,metric_values_et,val_interval):
         

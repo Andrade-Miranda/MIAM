@@ -6,11 +6,11 @@ Created on Thu Oct 21 11:40:28 2021
 @author: gustavo
 """
 import torch
-from monai.losses import FocalLoss,DiceFocalLoss
+from monai.losses import FocalLoss,DiceCELoss
 from monai.inferers import sliding_window_inference
 from pathlib import Path
 import numpy as np
-from util.losses import FL_and_CE_loss
+from util.losses import FL_and_CE_loss,DiceFocalLoss,GeneralizedDiceFocalLoss,FocalLossBin
 import json
 from monai.metrics import DiceMetric
 from timm.utils import NativeScaler
@@ -52,7 +52,7 @@ class PICAIConfig():
         # log dataset definition
         print('Dataset Definition:', "-"*80)
         print(f'Fold Number: {self.opt.fold}')
-        print('Data Classes:', list(range(self.opt.output_nc+1)))
+        print('Data Classes:', list(range(self.opt.output_nc)))
         print(f'Train-Time Class Weights: {self.class_weights}')
         print(f'Training Samples [-:{self.class_ratio_t[1]};+:{self.class_ratio_t[0]}]: {len(train_data[1])}')
         print(f'Validation Samples [-:{self.class_ratio_v[1]};+:{self.class_ratio_v[0]}]: {len(valid_data[1])}')
@@ -61,6 +61,7 @@ class PICAIConfig():
     
     def name(self):
         return "PICAI config"
+    
     
     def LoadConfig(self):
         
@@ -71,27 +72,49 @@ class PICAIConfig():
         # Allow Amp to perform casts as required by the opt_level
         self.loss_scaler = torch.cuda.amp.GradScaler()#NativeScaler() # if args.use_amp is False, this won't be used
         
-        #if self.opt.output_nc>2:
-        #self.loss_function = FL_and_CE_loss(alpha=self.class_weights[-1]).to(self.opt.device)
-        #self.loss_function = FocalLoss(include_background=True,  # only two classes and keep the same weight as before 
-        #                                to_onehot_y=False, 
-        #                                 gamma=2.0, 
-        #                                 weight=torch.tensor(self.class_weights),
-        #                                 reduction="sum").to(self.opt.device)
-        #self.loss_function=DiceFocalLoss(include_background=True, to_onehot_y=False if self.opt.dataroot=='Task2201_picai' else True, 
-        #                                sigmoid=False if self.opt.dataroot=='Task2201_picai' else True, 
-        #                                softmax=True if self.opt.dataroot=='Task2201_picai' else False, 
-        #                                other_act=None, 
-        #                                squared_pred=False, jaccard=False, reduction='mean', smooth_nr=1e-05, 
-        #                                smooth_dr=1e-05, batch=False, gamma=1.0, focal_weight=self.class_weights, 
-        #                                lambda_dice=1.0, lambda_focal=1.0)
-
-        self.loss_function = FL_and_CE_loss(fl_kwargs={'alpha':self.class_weights,'size_average':False},
-                                               ce_kwargs={'reduction': 'sum'},alpha=0.7).to(self.opt.device)
-
+        ##################LOSS CONFIGURATION##############################################""
+        if self.opt.loss_option=='FL_and_CE':
+            self.loss_function = FL_and_CE_loss(fl_kwargs={'alpha':self.class_weights,'size_average':False},
+                                               ce_kwargs={'reduction': 'sum'},alpha=self.opt.lambda_Loss[0]).to(self.opt.device)#alpha represent the weight for each loss
+        elif self.opt.loss_option=='FocalLossbin':
+            self.loss_function=FocalLossBin(alpha=self.class_weights[-1]).to(self.opt.device)
+        elif self.opt.loss_option=='FocalLoss':
+            self.loss_function = FocalLoss(include_background=True,  # only two classes and keep the same weight as before 
+                                        to_onehot_y=False, 
+                                         gamma=2.0, 
+                                         weight=torch.tensor(self.class_weights),
+                                         reduction="sum").to(self.opt.device)
+        elif self.opt.loss_option=='DiceFocalLoss':
+            self.loss_function=DiceFocalLoss(include_background=False, to_onehot_y=True,#False if self.opt.dataroot=='Task2201_picai' else True, 
+                                        sigmoid=True,#False if self.opt.dataroot=='Task2201_picai' else True, 
+                                        softmax=False,#True if self.opt.dataroot=='Task2201_picai' else False, 
+                                        other_act=None, 
+                                        squared_pred=False, jaccard=False, reduction='mean', smooth_nr=1e-05, 
+                                        smooth_dr=1e-05, batch=False, gamma=2.0, focal_weight=self.class_weights[1], 
+                                        lambda_dice=self.opt.lambda_Loss[0], lambda_focal=self.opt.lambda_Loss[1])
+        elif self.opt.loss_option=='GeneralDiceFocalLoss':
+            self.loss_function=GeneralizedDiceFocalLoss(include_background=False, to_onehot_y=True,#False if self.opt.dataroot=='Task2201_picai' else True, 
+                                        sigmoid=False,#False if self.opt.dataroot=='Task2201_picai' else True, 
+                                        softmax=True,#True if self.opt.dataroot=='Task2201_picai' else False, 
+                                        other_act=None, 
+                                        reduction='sum', 
+                                        smooth_nr=1e-05, 
+                                        smooth_dr=1e-05, batch=False, 
+                                        gamma=1.0, 
+                                        focal_weight=self.class_weights[1], 
+                                        lambda_gdl=self.opt.lambda_Loss[0], lambda_focal=self.opt.lambda_Loss[1])
+        else:
+            print("Choosing by default DiceCELoss")
+            self.loss_function = DiceCELoss(smooth_nr=0, smooth_dr=1e-5, squared_pred=False, to_onehot_y=False, sigmoid=True)
+    ################################################################################################################################################
+        
+    ##################Schedule CONFIGURATION##############################################""
         if self.opt.sched is not None:
             updates_per_epoch = self.opt.num_training_steps_per_epoch 
-            self.lr_scheduler, _ =create_scheduler_v2(self.optimizer,
+            if self.opt.sched=="poly":
+                self.lr_scheduler= poly_lr(self.opt)
+            else:
+                self.lr_scheduler, _ =create_scheduler_v2(self.optimizer,
                                                         **scheduler_kwargs(self.opt),
                                                         updates_per_epoch=updates_per_epoch,
                                                         )
@@ -103,7 +126,7 @@ class PICAIConfig():
 
         else:
             self.lr_scheduler=None
-
+    ################################################################################################################################################
         
 
         self.post_trans = Compose(
@@ -241,3 +264,12 @@ class PICAIConfig():
 
     def name(self):
         return "PICAIConfig"
+
+
+class poly_lr():
+    def __init__(self,opt):
+        self.opt=opt
+
+    def step_update(self,epoch, exponent=0.9):
+        """Polynomial learning rate schedule"""
+        return self.opt.lr * (1 - epoch / self.opt.epochs)**exponent

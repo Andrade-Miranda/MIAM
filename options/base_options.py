@@ -22,9 +22,9 @@ class BaseOptions():
         self.parser.add_argument('--Val_batchSize', type=int, default=1, help='validation batch size')
         self.parser.add_argument('--val_interval', type=int, default=1, help='# interval to do the evaluation')
         self.parser.add_argument('--validate_min_epoch', type=int, default=1, help='# value to start the evaluation')
-        self.parser.add_argument('--max_num_threads', type=int, default=30, help='# value max of thread')
+        self.parser.add_argument('--max_num_threads', type=int, default=12, help='# value max of thread')
         self.parser.add_argument('--update_freq', type=int, default=1, help='# gradient accumulation steps')
-        self.parser.add_argument('--batchSize', type=int, default=2, help='input batch size')
+        self.parser.add_argument('--batchSize', type=int, default=0, help='input batch size')
         self.parser.add_argument('--input_nc', type=int, default=4, help='# of input image channels')
         self.parser.add_argument('--output_nc', type=int, default=3, help='# of output image channels')
         self.parser.add_argument('--gpu_ids', type=str, default='-1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
@@ -64,7 +64,7 @@ class BaseOptions():
             self.initialize()
         self.opt = self.parser.parse_args()
         
-        features=(16,32,64,128,256,320,512,768,1028,1028,1028)#features filter for CNN network encoder
+        features=(32,64,128,256,320,512,768,1028,1028,1028)#features filter for CNN network encoder
         
         #### Train o test ############
         if self.opt.yh_run_model=='Train' or self.opt.yh_run_model=='Continue':
@@ -125,6 +125,10 @@ class BaseOptions():
             self.opt.pool_op_kernel_sizes=[[1,1,1],[1, 2, 2], [2, 2, 2], [2, 2, 2], [1, 2, 2], [1, 2, 2]]
             self.opt.conv_kernel_sizes=[[1, 3, 3], [1, 3, 3], [3, 3, 3], [3, 3, 3],[3, 3, 3],[3, 3, 3]]
             self.opt.filters_Encoder=features[:len(self.opt.conv_kernel_sizes)]
+
+        if self.opt.batchSize==0:#use batchsize nnunet
+            self.opt.batchSize=CurrentPlan['plans_per_stage'][self.opt.stage]['batch_size']
+            self.opt.Val_batchSize=CurrentPlan['plans_per_stage'][self.opt.stage]['batch_size']   
         '-------------'
                 
         self.opt.sched=self.str2None(self.opt.sched)
@@ -182,8 +186,10 @@ class BaseOptions():
 
         if global_rank == 0 and self.opt.enable_wandb:
             dir_wandb=os.makedirs(os.path.join('wandb'), exist_ok=True)
-            self.opt.wandb_logger = wandb.init(project=self.opt.project,config=self.opt,name=self.opt.nameRun,
-                                      dir=dir_wandb)
+            self.opt.wandb_logger = wandb.init(project=self.opt.project,
+                                               config=self.opt,
+                                               name=self.opt.nameRun,
+                                               dir=dir_wandb)
         else:
             self.opt.wandb_logger = None
         

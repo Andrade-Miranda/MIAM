@@ -11,17 +11,18 @@ import numpy as np
 
 ######FUSION AFTER VIT interaction#################################"
 class FusedGatedUnit(nn.Module):
-    def __init__(self, input_dimension, output_dimension,num_modalities):
+    def __init__(self, input_dimension, output_dimension):
         super(FusedGatedUnit, self).__init__()
-        self.fc_embeddings = nn.ModuleList()
-        for i in range(num_modalities):
-            self.fc_embeddings.append(nn.Linear(input_dimension, output_dimension))
+        #self.fc_embeddings = nn.ModuleList()
+        #for i in range(num_modalities):
+        #    self.fc_embeddings.append(nn.Linear(input_dimension, output_dimension))
+        self.fc_embeddings =nn.Linear(input_dimension, output_dimension)# only one embedding for all modalities
         self.cg = ContextGating(output_dimension)
 
     def forward(self, x):
         xin=[]
         for i in range(x.shape[1]):
-            xin.append(self.fc_embeddings[i](x[:,i]))
+            xin.append(self.fc_embeddings(x[:,i]))
         x = torch.stack(xin, dim=0).sum(dim=0)
         x = self.cg(x)
         return x

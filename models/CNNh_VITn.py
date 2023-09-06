@@ -18,7 +18,7 @@ from monai.utils import ensure_tuple_rep
 from torch.nn import init
 from util.util import print_network
 from .encoder import BasicUnetEnc
-from .decoder import CNN_decoder
+from .decoder import CNN_VIT_decoder
 
   
 class CNNHeavy_VITNaive(nn.Module):
@@ -114,17 +114,17 @@ class CNNHeavy_VITNaive(nn.Module):
         )
         """ ------------------------------------------------------------- """  
         from copy import deepcopy
-        filters_EncVit=list(deepcopy(filters_Encoder))
+        filters_EncVit=list(deepcopy(filters_Encoder))[:-1]
         filters_EncVit.append(hidden_size)
              
-        self.decoder=CNN_decoder(
+        self.decoder=CNN_VIT_decoder(
                    spatial_dims=spatial_dims,
                    num_modality=1,
                    features=tuple(filters_EncVit),
                    norm_name=norm_name,
                    res_block=res_block, 
-                   kernel_sizes=kernel_sizes+[[3,3,3]],
-                   stride=stride+[[1,1,1]],           
+                   kernel_sizes=kernel_sizes,
+                   stride=stride,           
                    )
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0], out_channels=out_channels)
         """ ------------------------------------------------------------- """      
@@ -161,8 +161,7 @@ class CNNHeavy_VITNaive(nn.Module):
         
         outViT, hidden_states_out = self.vit(encModal[-1])
         outViT = self.proj_feat(outViT, self.hidden_size, self.feat_size)
-        encModal.append(outViT)
-        output=self.decoder(encModal)
+        output=self.decoder(outViT,encModal)
         
         return self.out(output[-1])
         
@@ -173,7 +172,7 @@ class CNNHeavy_VITNaive(nn.Module):
 
 
         """--------------------Initialize network weights.---------------"""   
-    def init_weights(self,net, init_type='normal', init_gain=0.02):
+    def init_weights(self,net, init_type='xavier', init_gain=0.02):
         """Initialize network weights.
 
         Parameters:

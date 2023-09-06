@@ -191,8 +191,7 @@ class ViT_S(nn.Module):
         self.fusion=fusion
         self.numModal=numModal
         self.classification = classification
-        self.patch_embedding = nn.ModuleList(
-                        [PatchModalEmbBlock(
+        self.patch_embedding=PatchModalEmbBlock(
                                 numModal=numModal,
                                 in_channels=in_channels,
                                 img_size=img_size,
@@ -202,9 +201,21 @@ class ViT_S(nn.Module):
                                 pos_embed=pos_embed,
                                 dropout_rate=dropout_rate,
                                 spatial_dims=spatial_dims,
-                                modality=i
-                                )for i in range(numModal)]
-                        )
+                                )
+        #self.patch_embedding = nn.ModuleList(
+        #                [PatchModalEmbBlock(
+        #                        numModal=numModal,
+        #                        in_channels=in_channels,
+        #                        img_size=img_size,
+        #                        patch_size=patch_size,
+        #                        hidden_size=hidden_size,
+        #                        num_heads=num_heads,
+        #                        pos_embed=pos_embed,
+        #                        dropout_rate=dropout_rate,
+        #                        spatial_dims=spatial_dims,
+        #                        modality=i
+        #                        )for i in range(numModal)]
+        #                )
         self.blocks = nn.ModuleList(
             [TransformerBlock(hidden_size, mlp_dim, num_heads, dropout_rate) for i in range(num_layers)]
         )
@@ -216,7 +227,7 @@ class ViT_S(nn.Module):
     def forward(self, x):
         inputTok=[]
         for i in range(self.numModal):
-            inputTok.append(self.patch_embedding[i](x[i]))
+            inputTok.append(self.patch_embedding(x[i],i))#inputTok.append(self.patch_embedding[i](x[i]))# usar o no el mismo embedding space
             
         if self.fusion=="Concatenation":
             x=torch.cat(inputTok,1)
