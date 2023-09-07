@@ -56,8 +56,23 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
         Debug=None
         )
     
-    if trainConfig.Config.lr_scheduler is not None and opt.sched!="poly":
-        trainConfig.Config.lr_scheduler.step(epoch + 1)
+    ############## learning rate update and setup################
+    if opt.sched is not None:
+        if opt.sched=='warmup_cosine' or opt.sched=='cosine_anneal':
+            trainConfig.Config.lr_scheduler.step()
+            lrupdate=trainConfig.Config.optimizer.param_groups[0]['lr']
+        else:
+            trainConfig.Config.lr_scheduler.step(epoch + 1)
+            lrupdate=trainConfig.Config.optimizer.param_groups[0]['lr']
+        print(f"Learning Rate Updated! New Value: {lrupdate:.10}", flush=True)
+    else:
+        lrupdate=trainConfig.Config.optimizer.param_groups[0]['lr']
+        print(f"Learning Rate fix: {lrupdate:.10}", flush=True)
+    # #🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝
+    if  opt.enable_wandb:
+        opt.wandb_logger.log({"lr/epoch":lrupdate},step=epoch)
+######################################################################################
+
 
     # ----------------------------------------------------------------------------------------------------------------------
     # for each round of validation

@@ -206,9 +206,8 @@ class FocalLossBin(nn.Module):
         self.reduction = reduction
 
     def forward(self, inputs, targets):
-        targets=targets[:, 0, ...].long()
         inputs = torch.sigmoid(inputs)
-        targets = F.one_hot(targets, num_classes=self.num_classes).float()
+        targets = F.one_hot(targets[:, 0, ...].long(), num_classes=self.num_classes).float()
         targets = torch.moveaxis(targets, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
         ce_loss = F.binary_cross_entropy(inputs, targets, reduction="none")
         p_t = (inputs[-1] * targets[-1]) + ((1 - inputs[-1]) * (1 - targets[-1]))
@@ -373,7 +372,7 @@ class DiceFocalLoss(_Loss):
         dice_loss = self.dice(input, target)
         focal_loss = self.focal(input, target)
         total_loss: torch.Tensor = self.lambda_dice * dice_loss + self.lambda_focal * focal_loss
-        return total_loss,dice_loss,focal_loss
+        return total_loss #,dice_loss,focal_loss
     
 
 
@@ -482,4 +481,4 @@ class GeneralizedDiceFocalLoss(torch.nn.modules.loss._Loss):
         gdl_loss = self.generalized_dice(input, target)
         focal_loss = self.focal(input, target)
         total_loss: torch.Tensor = self.lambda_gdl * gdl_loss + self.lambda_focal * focal_loss
-        return total_loss,gdl_loss,focal_loss
+        return total_loss #,gdl_loss,focal_loss

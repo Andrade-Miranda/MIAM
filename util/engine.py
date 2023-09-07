@@ -173,9 +173,7 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
     start_time = time.time()
     epoch = tracking_metrics['epoch']
     num_updates = epoch * args.num_training_steps_per_epoch
-    if  args.enable_wandb: 
-        wandb_logger.log({"epoch":epoch,
-                          "learning_rate/epoch":np.round(optimizer.param_groups[0]['lr'], 10)})
+
     model.train()
     # for each mini-batch or optimization step
     for batch_data in train_gen:
@@ -196,36 +194,19 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
         if args.VAL_AMP:
             with torch.cuda.amp.autocast():
                 outputs = model(inputs)
-                loss,dice_,focal_ = loss_func(outputs, labels)
+                #loss,dice_,
+                loss = loss_func(outputs, labels)
         else: # full precision
             outputs = model(inputs)
-            loss,dice_,focal_ = loss_func(outputs, labels)   
+            #loss,dice_,
+            loss = loss_func(outputs, labels)   
         train_loss += loss.item()
-        dice_loss+= dice_.item()
-        focal_loss+= focal_.item()
+        #dice_loss+= dice_.item()
+        #focal_loss+= focal_.item()
 
         labels_ = F.one_hot(labels[:, -1, ...].long(), num_classes=args.output_nc).float()
         labels_ = torch.moveaxis(labels_, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
         Config.Config.dice_metricTrain(Config.Config.post_trans(outputs),labels_)
-
-        ### temporal setting to track image
-        #import matplotlib.pyplot as plt
-        #plt.matplotlib.use('Agg')
-        #fig = plt.figure(figsize=(8, 8))
-        #columns = 2
-        #rows = 3
-        #fig.add_subplot(rows, columns, 1)
-        #plt.imshow(batch_data['image'][0,0,10,:,:],cmap='gray')
-        #fig.add_subplot(rows, columns, 2)
-        #plt.imshow(labels[0,0,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
-        #fig.add_subplot(rows, columns, 3)
-        #plt.imshow(labels[0,-1,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
-        #fig.add_subplot(rows, columns, 4)
-        #plt.imshow(Config.Config.post_trans(outputs)[0,0,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
-        #fig.add_subplot(rows, columns, 5)
-        #plt.imshow(Config.Config.post_trans(outputs)[0,1,10,:,:].detach().cpu().numpy(),cmap='gray',vmin=0,vmax=1)
-        #plt.savefig(args.out_dir+'/'+batch_data['keys'][0]+'_'+str(epoch))
-        ######
 
         # backpropagate + optimize
         optimizer.zero_grad()
@@ -235,25 +216,10 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
         scaler.step(optimizer)
         scaler.update()
         
-        #🐝
-        if  args.enable_wandb:
-            wandb_logger.log({"train/loss_step":loss.item()
-                              })
-            
+        
         if step >= args.num_training_steps_per_epoch: 
             break
     
-    # learning rate update and setup
-    if args.sched is not None:
-        if args.sched=='poly':
-            lrupdate = lr_scheduler.step_update(epoch+1)
-            optimizer.param_groups[0]['lr'] = lrupdate
-        else:
-            lr_scheduler.step_update(num_updates=num_updates)
-            lrupdate=optimizer.param_groups[0]['lr']
-        print(f"Learning Rate Updated! New Value: {lrupdate:.10}", flush=True)
-    else:
-        print(f"Learning Rate fix: {args.lr:.10}", flush=True)
 
     # track training metrics
     train_loss /= step
@@ -264,15 +230,14 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
     tracking_metrics['train_loss'] = train_loss
     writer.add_scalar("train_loss", train_loss, epoch+1)
 
-    #🐝
+    #🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝
     if  args.enable_wandb:
         wandb_logger.log({"train/loss_epoch":train_loss},step=epoch)
         wandb_logger.log({"train/DSC_epoch":DSCTrain},step=epoch)
-        wandb_logger.log({"lr/epoch":lrupdate},step=epoch)
-
-    
+        
+    #  Dice Loss: {dice_loss:.4f}; Focal Loss: {focal_loss:.4f};
     print("-" * 100)
-    print(f"Epoch {epoch + 1}/{args.epochs} (Train. Total Loss: {train_loss:.4f}; Dice Loss: {dice_loss:.4f}; Focal Loss: {focal_loss:.4f}; \
+    print(f"Epoch {epoch + 1}/{args.epochs} (Train. Total Loss: {train_loss:.4f}; \
           DSC Train: {DSCTrain:.5f}; \
         Time: {int(time.time()-start_time)}; \
         sec; Steps Completed: {step})", flush=True)
@@ -302,7 +267,7 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
             valid_labels = torch.from_numpy(valid_data['label']).to(args.device)
         
         outputs = model(valid_images)
-        valloss,_,_ = loss_func(outputs, valid_labels)# tomo el zero para poder hacer one-hot
+        valloss = loss_func(outputs, valid_labels)# tomo el zero para poder hacer one-hot
         val_loss += valloss.item()
 
         labels = F.one_hot(valid_labels[:, -1, ...].long(), num_classes=2).float()
@@ -400,7 +365,7 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
     writer.add_scalar("val_loss", val_loss/step, epoch+1)
     writer.add_scalar("val_dice", DSC_val, epoch+1)
     
-    #🐝
+    #🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝
     if  args.enable_wandb:
         #pred_notumor=1-np.array(list(valid_metrics.case_pred.values()))
         #prediction=np.stack((pred_notumor,np.array(list(valid_metrics.case_pred.values()))),axis=-1)      

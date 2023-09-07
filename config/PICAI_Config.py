@@ -13,10 +13,11 @@ import numpy as np
 from util.losses import FL_and_CE_loss,DiceFocalLoss,GeneralizedDiceFocalLoss,FocalLossBin
 import json
 from monai.metrics import DiceMetric
-from timm.utils import NativeScaler
+#from timm.utils import NativeScaler
 from timm.scheduler import create_scheduler_v2,scheduler_kwargs
 from timm.optim import create_optimizer
 import pandas as pd
+from util.lr_scheduler import LinearWarmupCosineAnnealingLR,poly_lr
 
 from monai.transforms import (
         AsDiscrete,
@@ -94,10 +95,10 @@ class PICAIConfig():
                                         lambda_dice=self.opt.lambda_Loss[0], lambda_focal=self.opt.lambda_Loss[1])
         elif self.opt.loss_option=='GeneralDiceFocalLoss':
             self.loss_function=GeneralizedDiceFocalLoss(include_background=False, to_onehot_y=True,#False if self.opt.dataroot=='Task2201_picai' else True, 
-                                        sigmoid=False,#False if self.opt.dataroot=='Task2201_picai' else True, 
-                                        softmax=True,#True if self.opt.dataroot=='Task2201_picai' else False, 
+                                        sigmoid=False if self.opt.dataroot=='Task2201_picai' else True, 
+                                        softmax=True if self.opt.dataroot=='Task2201_picai' else False, 
                                         other_act=None, 
-                                        reduction='sum', 
+                                        reduction='mean', 
                                         smooth_nr=1e-05, 
                                         smooth_dr=1e-05, batch=False, 
                                         gamma=1.0, 
@@ -113,6 +114,10 @@ class PICAIConfig():
             updates_per_epoch = self.opt.num_training_steps_per_epoch 
             if self.opt.sched=="poly":
                 self.lr_scheduler= poly_lr(self.opt)
+            elif self.opt.sched == "warmup_cosine":
+                self.lr_scheduler = LinearWarmupCosineAnnealingLR(self.optimizer, warmup_epochs=self.opt.warmup_epochs, max_epochs=self.opt.epochs)
+            elif self.opt.sched == "cosine_anneal":
+                self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.opt.epochs)
             else:
                 self.lr_scheduler, _ =create_scheduler_v2(self.optimizer,
                                                         **scheduler_kwargs(self.opt),
@@ -266,10 +271,3 @@ class PICAIConfig():
         return "PICAIConfig"
 
 
-class poly_lr():
-    def __init__(self,opt):
-        self.opt=opt
-
-    def step_update(self,epoch, exponent=0.9):
-        """Polynomial learning rate schedule"""
-        return self.opt.lr * (1 - epoch / self.opt.epochs)**exponent

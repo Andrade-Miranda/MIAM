@@ -19,11 +19,11 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--mlp_dim', type=int, default=3072, help='dimension of the transformer multilayer perceptron')
         self.parser.add_argument('--num_heads', type=int, default=12, help='number of head of each transformer block')
         self.parser.add_argument('--num_layers', type=int, default=12, help='number of encoder in the transformer block')
-        self.parser.add_argument('--pos_embed', type=str, default="perceptron", help='positional embedding strategy')    
+        self.parser.add_argument('--pos_embed', type=str, default="conv", help='positional embedding strategy')    
         self.parser.add_argument('--norm_name', type=str, default="instance", help='normalization strategy')
         self.parser.add_argument('--pretrained', type=str, default=None, help='no use pretrained models')   
         self.parser.add_argument('--pretrained2d', dest='pretrained2d',action='store_true', default=False, help='When 2d pretraining are available')  
-        self.parser.add_argument('--dropout_rate', type=float, default=0.1, help='dropout rate')   
+        self.parser.add_argument('--dropout_rate', type=float, default=0.0, help='dropout rate')   
         self.parser.add_argument('--Earlyfusion', type=str, default="Concatenation", help='type of early fusion')
     
     # CNN setting
@@ -88,7 +88,7 @@ class TrainOptions(BaseOptions):
                    help='list of decay epoch indices for multistep lr. must be increasing')
         self.parser.add_argument('--decay-epochs', type=float, default=90, metavar='N',
                    help='epoch interval to decay LR')
-        self.parser.add_argument('--warmup-epochs', type=int, default=5, metavar='N',
+        self.parser.add_argument('--warmup_epochs', type=int, default=50, metavar='N', ## warmup-epochs is for TIMM
                    help='epochs to warmup LR, if scheduler supports')
         self.parser.add_argument('--warmup-prefix', action='store_true', default=False,
                    help='Exclude warmup period from decay schedule.'),
