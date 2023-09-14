@@ -30,7 +30,7 @@ import torch.nn.functional as F
 from data.data_loader import CreateDataLoader
 from config.train_setup import TrainSetup
 from batchgenerators.utilities.file_and_folder_operations import join,maybe_mkdir_p,subfiles,isfile
-from util.testing_setup import save_segmentation_nifti_from_softmax
+from util.testing_setup import save_segmentation_nifti_from_softmax,save_segmentation_nifti_softmax
 from picai_eval import evaluate_folder
 from util import seg_metrics as sg
 #from picai_baseline.splits.picai_nnunet import valid_splits
@@ -39,6 +39,13 @@ from util import seg_metrics as sg
 from monai.data import (
     decollate_batch
 )
+from monai.transforms import (
+    Compose,
+    Activations
+)
+post_trans = Compose(
+                [Activations(sigmoid=True)]
+            )
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,trainConfig,
@@ -342,17 +349,13 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
                                         tracking_metrics['all_train_loss'],
                                         tracking_metrics['all_valid_loss'],
                                         tracking_metrics['all_valid_metrics_auroc'],
-                                        tracking_metrics['all_valid_metrics_FPR'],
-                                        tracking_metrics['all_valid_metrics_TPR'],
                                         tracking_metrics['all_valid_metrics_BestROC_THR'],
                                         tracking_metrics['all_valid_metrics_ap'],
-                                        tracking_metrics['all_valid_metrics_precision'],
-                                        tracking_metrics['all_valid_metrics_recall'],
                                         tracking_metrics['all_valid_metrics_BestPR_THR'],
                                         tracking_metrics['all_valid_metrics_ranking'],
                                         tracking_metrics['all_valid_metrics_Dice'])),
-                               columns=['epoch', 'train_loss','valid_loss','valid_auroc','valid_FPR','valid_TPR',
-                                        'valid_BestROC_THR', 'valid_ap', 'valid_precision','valid_recall',
+                               columns=['epoch', 'train_loss','valid_loss','valid_auroc',
+                                        'valid_BestROC_THR', 'valid_ap',
                                         'valid_BestPR_THR','valid_ranking','valid_Dice'])
 
     # create target folder and save exports sheet
@@ -429,12 +432,14 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
 
     #######################################
     output_folder = join('./nnUNet/data/nnUnet_raw/results','predictions',opt.dataroot,opt.encoder,opt.name)
+    output_folder_softmax = join('./nnUNet/data/nnUnet_raw/results','Softmax',opt.dataroot,opt.encoder,opt.name)
     opt.input_folder= join("./nnUNet/data/nnUnet_raw/nnUNet_raw_data",opt.dataroot,"labelsTr")
     y_true_dir=Path("./nnUNet/data/nnUnet_raw/nnUNet_raw_data") / Path(opt.dataroot) / "labelsTr"
     with open(Path("./nnUNet/data/nnUnet_raw/results/overviews/"+opt.dataroot) / f'PI-CAI_val-fold-{opt.fold}.json') as fp:
         valid_json = json.load(fp)
     subject_list=[valid_json['pat_ids'][i]+'_'+valid_json['study_ids'][i] for i in range(len(valid_json['pat_ids']))]
     maybe_mkdir_p(output_folder)
+    maybe_mkdir_p(output_folder_softmax)
     ######################################
     
     testConfig=TrainSetup(opt,model)
@@ -453,32 +458,30 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
             out_fname = preprocessed["keys"].item()
             dct=preprocessed["properties"][0]
 
-            val_outputs = testConfig.Config.inference(val_inputs)
-            val_outputs = testConfig.Config.post_trans(val_outputs[0][-1][None,...])
+            #### save sigmoid mask################
+            val_outputs = testConfig.Config.inference(val_inputs)#### inference
+            val_outputs_seg = testConfig.Config.post_trans(val_outputs[0][-1][None,...])
+            val_outputsSoftmax = post_trans(val_outputs[:,-1])
+
             patientsID.append(out_fname)
             outputpath=join(output_folder,out_fname+'.nii.gz')
-            save_segmentation_nifti_from_softmax(val_outputs.detach().cpu(),outputpath,
+            save_segmentation_nifti_from_softmax(val_outputs_seg.detach().cpu(), outputpath,
                                          dct, order=1,
                                          region_class_order= None,
                                          seg_postprogess_fn= None, seg_postprocess_args= None,
                                          resampled_npz_fname= None,
                                          non_postprocessed_fname= None, force_separate_z= None,
                                          interpolation_order_z= 0, verbose= True,isbrats=False)
-            
-            if  opt.enable_wandb:
-            # log last 5 slices of each 3D image
-            # force to pick one of the not only background image
-                max_value_per_batch=int(np.argmax(np.sum(val_labels[:,-1,...].detach().cpu().numpy(),axis=(1,2,3))))
-                # log last 20 slices of each 3D image
-                total_slice=val_inputs.shape[2]
-                min=total_slice//2-4
-                max=total_slice//2+4
-                for slice_no in range(min, max):
-                    img = val_inputs[max_value_per_batch, 0, slice_no,:, :].detach().cpu().numpy()
-                    label = val_labels[max_value_per_batch, -1, slice_no,:, :].detach().cpu().numpy()
-                    prediction = val_outputs[max_value_per_batch, slice_no,:, :].detach().cpu().numpy()
-                    # 🐝 Add data to wandb table dynamically    
-                    tableSeg.add_data(out_fname, wandb.Image(img), wandb.Image(label), wandb.Image(prediction))
+                
+            # save softmax prediction
+            outputpath_softmax=join(output_folder_softmax,out_fname+'.nii.gz')
+            save_segmentation_nifti_softmax(val_outputsSoftmax.detach().cpu(), outputpath_softmax,
+                                         dct, order=1,
+                                         region_class_order= None,
+                                         seg_postprogess_fn= None, seg_postprocess_args= None,
+                                         resampled_npz_fname= None,
+                                         non_postprocessed_fname= None, force_separate_z= None,
+                                         interpolation_order_z= 0, verbose= True,isbrats=False)
 
             if step==datalen:
                 break
@@ -487,7 +490,7 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
 
             
            
-        del val_outputs
+        del val_outputs,val_outputs_seg
 
     labels= [i for i in range(opt.output_nc)]
     metricspercase = sg.write_metrics(labels=labels[1:],
@@ -515,8 +518,7 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
 
 
 
-
-    metrics = evaluate_folder(y_det_dir=Path(output_folder),
+    metrics = evaluate_folder(y_det_dir=Path(output_folder_softmax),
                               y_true_dir=y_true_dir,
                               subject_list=subject_list,
                               y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0],
@@ -530,10 +532,10 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
         opt.wandb_logger.log({
                 "rocTest" : wandb.plot.roc_curve([metrics.case_target[s] for s in metrics.subject_list],
                                                         [[1-metrics.case_pred[s],metrics.case_pred[s]] for s in metrics.subject_list],
-                                                        title='ROC Test'),
+                                                        title='ROC Test',classes_to_plot=1),
                 "prTest":wandb.plot.pr_curve([metrics.case_target[s] for s in metrics.subject_list], 
                                                    [[1-metrics.case_pred[s],metrics.case_pred[s]] for s in metrics.subject_list],
-                                                   title='Precision vs Recall Test'),
+                                                   title='Precision vs Recall Test',classes_to_plot=1),
                 "Confusion Matrix Test WB":wandb.plot.confusion_matrix(
                                          y_true=[metrics.case_target[s] for s in metrics.subject_list],
                                         preds=[np.argmax([1-metrics.case_pred[s],metrics.case_pred[s]]) for s in metrics.subject_list],     
@@ -551,6 +553,21 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
 
 
 
+def Prostate_Tumor_Augmentation(valid_images,testConfig):
+    valid_images = [valid_images, torch.flip(valid_images, [4])]
+    preds = [torch.sigmoid(testConfig.Config.inference(x))[:,-1, ...].detach().cpu().numpy()
+            for x in valid_images
+            ]
+    # revert horizontally flipped tta image
+    preds[1] = np.flip(preds[1], [3])
+
+    # gaussian blur to counteract checkerboard artifacts in
+    # predictions from the use of transposed conv. in the U-Net
+    all_valid_preds =np.mean([
+            gaussian_filter(x, sigma=1.5)
+            for x in preds
+            ], axis=0)   #append to the list the validation prediction
+    return all_valid_preds
 
 
 

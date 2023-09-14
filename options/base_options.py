@@ -149,6 +149,8 @@ class BaseOptions():
         self.opt.filters_Encoder=tuple([int(self.opt.filters_Encoder[i]) for i in range(len(self.opt.filters_Encoder))])
         if self.opt.region[0]!='None' and self.opt.dataroot!='Task001_BraTS2021':
             self.opt.region=tuple([tuple([int(i) for i in x.split(',')]) if len(x)>1 else (int(x),) for x in self.opt.region])
+
+        self.opt.lambda_Loss=[float(x) for x in self.opt.lambda_Loss[0].split(' ')]
        
         ### set checkpoint and output folder
         if self.opt.checkpoints_dir is not None:
@@ -187,6 +189,7 @@ class BaseOptions():
         if global_rank == 0 and self.opt.enable_wandb:
             dir_wandb=os.makedirs(os.path.join('wandb'), exist_ok=True)
             self.opt.wandb_logger = wandb.init(project=self.opt.project,
+                                               entity="xamus86",
                                                config=self.opt,
                                                name=self.opt.nameRun,
                                                dir=dir_wandb)

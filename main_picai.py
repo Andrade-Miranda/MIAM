@@ -94,7 +94,7 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
                 Config=trainConfig,
                 )
 
-test_Predict_Rank(model,opt,test_loader,datalen[1])
+test_Predict_Rank(model,opt,test_loader,datalen[1])# modify to perform test simultaniously or activate an option for only test
 
 print(
     f"Training Complete! Peak Validation Ranking Score: {trainConfig.Config.tracking_metrics['best_metric']:.4f} "

@@ -12,7 +12,7 @@ from config.train_setup import TrainSetup
 from models.models import create_model
 from copy import deepcopy
 from argparse import Namespace
-#from util.metrics import metricStatistics
+from scipy.ndimage import gaussian_filter
 
 from data.data_loader import CreateDataLoader
 from monai.data import (
@@ -23,21 +23,29 @@ from batchgenerators.utilities.file_and_folder_operations import join,maybe_mkdi
 import nibabel as nib
 import os
 from functools import partial
+from pathlib import Path
 
 from monai.transforms import (
     Compose,
     RandSpatialCropd,
     RandFlipd,
     EnsureTyped,
-    AsDiscrete
+    AsDiscrete,
+    Activations,
 )
+
+
+from picai_eval import evaluate_folder
+from report_guided_annotation import extract_lesion_candidates
 
 
 import SimpleITK as sitk
 from nnUNet.nnunet.preprocessing.preprocessing import get_lowres_axis, get_do_separate_z, resample_data_or_seg
 from batchgenerators.utilities.file_and_folder_operations import *
 
-
+post_trans = Compose(
+                [Activations(sigmoid=True)]
+            )
 
 def predict_from_folder(opt=None):
     """
@@ -139,6 +147,10 @@ def load_trainingSetup(file_name,args,numiter):
                 value=int(value)
             elif key=='patchSize':
                 value=int(value)
+            elif key=='lambda_Loss':
+                value=list([float(i[1:]) for i in value[:-1].split(',')])
+            elif key== 'lr_base_scale':
+                continue
             elif value[0].isnumeric() and len(value)>1:
                 if value[1]=='.' or bool(value.find('e')):
                     value=float(value)
@@ -171,6 +183,7 @@ def load_trainingSetup(file_name,args,numiter):
             lista.append(('isbrats',False))
         
         lista.append(('input_folder',args.input_folder))
+        lista.append(('outputSoft_dir',args.outputSoft_dir[numiter]))
         lista.append(('num_threads_preprocessing',args.num_threads_preprocessing))
         lista.append(('num_threads_nifti_save',args.num_threads_nifti_save))
         
@@ -220,9 +233,16 @@ def check_input_folder_and_return_caseIDs(input_folder, expected_num_modalities)
 
     return maybe_case_ids
 
-def Mode_NCrossval(args,opt,output_folder):#### need to be updated
+def Mode_NCrossval(args,opt):#### need to be updated
+
     for i in range(len(args.folds)):
+
         maybe_mkdir_p(opt[i].output_dir)
+        ######create a list and a directory to save softmax prediction
+        if args.saveProb:
+            subject_list=[]
+            maybe_mkdir_p(opt[i].outputSoft_dir)
+        ####################################
         model=predict_from_folder(opt[i]).eval() 
         data_loader = CreateDataLoader(opt[i])
         testConfig=TrainSetup(opt[i],model)
@@ -235,21 +255,67 @@ def Mode_NCrossval(args,opt,output_folder):#### need to be updated
                     data = np.load(val_data)
                     os.remove(val_data)
                     val_data= data
-                val_inputs=torch.from_numpy(val_data)[None,...].to(opt[i].device)
+                val_inputs=torch.from_numpy(val_data)[None,...].to(opt[i].device)[-1][None,:]
+                #val_outputsSoftmax=Prostate_Tumor_Augmentation(val_inputs,testConfig)
+                #val_outputs_seg = torch.argmax(torch.softmax(val_outputs,dim=1),dim=1)
+                #val_outputsSoftmax = torch.softmax(val_outputs,dim=1)
                 val_outputs = testConfig.Config.inference(val_inputs)
-                val_outputs = testConfig.Config.post_trans(val_outputs[0][1][None,...])
-          
+                val_outputs_seg = testConfig.Config.post_trans(val_outputs[0][-1][None,...])
+                val_outputsSoftmax = post_trans(val_outputs[:,-1])
+
                 out_fname=output_filename
-                save_segmentation_nifti_from_softmax(val_outputs.detach().cpu(), out_fname,
+                save_segmentation_nifti_from_softmax(val_outputs_seg.detach().cpu(), out_fname,
                                          dct, order=1,
                                          region_class_order= opt[i].region_class_order,
                                          seg_postprogess_fn= None, seg_postprocess_args= None,
                                          resampled_npz_fname= None,
                                          non_postprocessed_fname= None, force_separate_z= None,
                                          interpolation_order_z= 0, verbose= True,isbrats=opt[i].isbrats)
-           
-                del val_outputs
-                #torch.cuda.empty_cache()             
+                
+                # save softmax prediction
+                if args.saveProb:
+                    subject_list +=[output_filename.split('/')[-1].split('.')[0]]
+                    save_segmentation_nifti_softmax(val_outputsSoftmax.detach().cpu(), join(opt[i].outputSoft_dir,output_filename.split('/')[-1]),
+                                         dct, order=1,
+                                         region_class_order= opt[i].region_class_order,
+                                         seg_postprogess_fn= None, seg_postprocess_args= None,
+                                         resampled_npz_fname= None,
+                                         non_postprocessed_fname= None, force_separate_z= None,
+                                         interpolation_order_z= 0, verbose= True,isbrats=opt[i].isbrats)
+
+
+                del val_outputsSoftmax,val_outputs_seg
+        
+        if args.y_true_dir is not None:
+            print("Evaluate segmentation and/or classification performance",flush=True)
+            metrics = evaluate_folder(y_det_dir=Path(opt[i].outputSoft_dir),
+                              y_true_dir=args.y_true_dir,
+                              subject_list=subject_list,
+                              y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred,threshold="dynamic")[0],
+                              detection_map_postfixes=[""],
+                              label_postfixes=[""],num_parallel_calls=2
+                            )
+        
+            metrics.save(Path(opt[i].outputSoft_dir) / "metrics.json")
+            print(f"Evaluation of training performance finished for fold {opt[i].fold}.")
+
+    
+
+def Prostate_Tumor_Augmentation(valid_images,testConfig):
+    valid_images = [valid_images, torch.flip(valid_images, [4])]
+    preds = [torch.sigmoid(testConfig.Config.inference(x))[:,-1, ...].detach().cpu().numpy()
+            for x in valid_images
+            ]
+    # revert horizontally flipped tta image
+    preds[1] = np.flip(preds[1], [3])
+
+    # gaussian blur to counteract checkerboard artifacts in
+    # predictions from the use of transposed conv. in the U-Net
+    all_valid_preds =np.mean([
+            gaussian_filter(x, sigma=1.5)
+            for x in preds
+            ], axis=0)   #append to the list the validation prediction
+    return all_valid_preds
 
 
 def Mode_MeanEnsembBrats(args,opt):#we don't applied argmax or discrete give directly the sigmoid, region_class_order 
@@ -441,6 +507,7 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
     else:
         seg_old_size_postprocessed = seg_old_size
 
+
     seg_resized_itk = sitk.GetImageFromArray(seg_old_size_postprocessed.astype(np.uint8))
     seg_resized_itk.SetSpacing(properties_dict['itk_spacing'])
     seg_resized_itk.SetOrigin(properties_dict['itk_origin'])
@@ -456,10 +523,144 @@ def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
 
 
 
-def infer_seg(val_inputs, models, opt,fold,testConfig):
-    val_outputs=testConfig.Config.inference(val_inputs[0])
-    val_outputs = [testConfig.Config.post_trans(i) for i in decollate_batch(val_outputs)]
-    return val_outputs[0][None,:]
+def save_segmentation_nifti_softmax(segmentation_softmax, out_fname,
+                                    properties_dict, order=1,
+                                    region_class_order= None,
+                                    seg_postprogess_fn= None, seg_postprocess_args= None,
+                                    resampled_npz_fname= None,
+                                    non_postprocessed_fname= None, force_separate_z= None,
+                                    interpolation_order_z= 0, verbose= True, isbrats=False):
+    """
+    This is a utility for writing segmentations to nifto and npz. It requires the data to have been preprocessed by
+    GenericPreprocessor because it depends on the property dictionary output (dct) to know the geometry of the original
+    data. segmentation_softmax does not have to have the same size in pixels as the original data, it will be
+    resampled to match that. This is generally useful because the spacings our networks operate on are most of the time
+    not the native spacings of the image data.
+    If seg_postprogess_fn is not None then seg_postprogess_fnseg_postprogess_fn(segmentation, *seg_postprocess_args)
+    will be called before nifto export
+    There is a problem with python process communication that prevents us from communicating obejcts
+    larger than 2 GB between processes (basically when the length of the pickle string that will be sent is
+    communicated by the multiprocessing.Pipe object then the placeholder (\%i I think) does not allow for long
+    enough strings (lol). This could be fixed by changing i to l (for long) but that would require manually
+    patching system python code.) We circumvent that problem here by saving softmax_pred to a npy file that will
+    then be read (and finally deleted) by the Process. save_segmentation_nifti_from_softmax can take either
+    filename or np.ndarray for segmentation_softmax and will handle this automatically
+    :param segmentation_softmax:
+    :param out_fname:
+    :param properties_dict:
+    :param order:
+    :param region_class_order:
+    :param seg_postprogess_fn:
+    :param seg_postprocess_args:
+    :param resampled_npz_fname:
+    :param non_postprocessed_fname:
+    :param force_separate_z: if None then we dynamically decide how to resample along z, if True/False then always
+    /never resample along z separately. Do not touch unless you know what you are doing
+    :param interpolation_order_z: if separate z resampling is done then this is the order for resampling in z
+    :param verbose:
+    :return:
+    """
+    if verbose: print("force_separate_z:", force_separate_z, "interpolation order:", order)
+
+    if isinstance(segmentation_softmax, str):
+        assert isfile(segmentation_softmax), "If isinstance(segmentation_softmax, str) then " \
+                                             "isfile(segmentation_softmax) must be True"
+        del_file = deepcopy(segmentation_softmax)
+        segmentation_softmax = np.load(segmentation_softmax)
+        os.remove(del_file)
+
+    # first resample, then put result into bbox of cropping, then save
+    current_shape = segmentation_softmax.shape
+    shape_original_after_cropping = properties_dict.get('size_after_cropping')
+    shape_original_before_cropping = properties_dict.get('original_size_of_raw_data')
+    # current_spacing = dct.get('spacing_after_resampling')
+    # original_spacing = dct.get('original_spacing')
+
+    if np.any([i != j for i, j in zip(np.array(current_shape[1:]), np.array(shape_original_after_cropping))]):
+        if force_separate_z is None:
+            if get_do_separate_z(properties_dict.get('original_spacing')):
+                do_separate_z = True
+                lowres_axis = get_lowres_axis(properties_dict.get('original_spacing'))
+            elif get_do_separate_z(properties_dict.get('spacing_after_resampling')):
+                do_separate_z = True
+                lowres_axis = get_lowres_axis(properties_dict.get('spacing_after_resampling'))
+            else:
+                do_separate_z = False
+                lowres_axis = None
+        else:
+            do_separate_z = force_separate_z
+            if do_separate_z:
+                lowres_axis = get_lowres_axis(properties_dict.get('original_spacing'))
+            else:
+                lowres_axis = None
+
+        if lowres_axis is not None and len(lowres_axis) != 1:
+            # this happens for spacings like (0.24, 1.25, 1.25) for example. In that case we do not want to resample
+            # separately in the out of plane axis
+            do_separate_z = False
+
+        if verbose: print("separate z:", do_separate_z, "lowres axis", lowres_axis)
+        seg_old_spacing = resample_data_or_seg(segmentation_softmax.detach().cpu().numpy(), shape_original_after_cropping, is_seg=False,
+                                               axis=lowres_axis, order=order, do_separate_z=do_separate_z,
+                                               order_z=interpolation_order_z)
+        # seg_old_spacing = resize_softmax_output(segmentation_softmax, shape_original_after_cropping, order=order)
+    else:
+        if verbose: print("no resampling necessary")
+        seg_old_spacing = segmentation_softmax
+
+    if resampled_npz_fname is not None:
+        np.savez_compressed(resampled_npz_fname, softmax=seg_old_spacing.astype(np.float16))
+        # this is needed for ensembling if the nonlinearity is sigmoid
+        if region_class_order is not None:
+            properties_dict['regions_class_order'] = region_class_order
+        save_pickle(properties_dict, resampled_npz_fname[:-4] + ".pkl")
+
+    if region_class_order is None:
+        seg_old_spacing = seg_old_spacing[0]#.detach().cpu().numpy()# i did ya argmax
+    else:
+        seg_old_spacing_final = np.zeros(seg_old_spacing.shape[1:])
+        if isbrats:
+            nclass=[1,0,2]
+            for i, c in enumerate(region_class_order):
+                seg_old_spacing_final[seg_old_spacing.detach().cpu().numpy()[nclass[i]] > 0.5] = c
+                
+            seg_old_spacing = seg_old_spacing_final 
+        #else:
+            #for i, c in enumerate(region_class_order):
+             #   seg_old_spacing_final[seg_old_spacing.detach().cpu().numpy()[i] > 0.5] = c
+            #seg_old_spacing = seg_old_spacing_final
+
+    bbox = properties_dict.get('crop_bbox')
+
+    if bbox is not None:
+        seg_old_size = np.zeros(shape_original_before_cropping)
+        for c in range(3):
+            bbox[c][1] = np.min((bbox[c][0] + seg_old_spacing.shape[c], shape_original_before_cropping[c]))
+        seg_old_size[bbox[0][0]:bbox[0][1],
+        bbox[1][0]:bbox[1][1],
+        bbox[2][0]:bbox[2][1]] = seg_old_spacing
+    else:
+        seg_old_size = seg_old_spacing
+
+    if seg_postprogess_fn is not None:
+        seg_old_size_postprocessed = seg_postprogess_fn(np.copy(seg_old_size), *seg_postprocess_args)
+    else:
+        seg_old_size_postprocessed = seg_old_size
+
+
+    seg_resized_itk = sitk.GetImageFromArray(seg_old_size_postprocessed.astype(np.float))
+    seg_resized_itk.SetSpacing(properties_dict['itk_spacing'])
+    seg_resized_itk.SetOrigin(properties_dict['itk_origin'])
+    seg_resized_itk.SetDirection(properties_dict['itk_direction'])
+    sitk.WriteImage(seg_resized_itk, out_fname)
+
+    if (non_postprocessed_fname is not None) and (seg_postprogess_fn is not None):
+        seg_resized_itk = sitk.GetImageFromArray(seg_old_size.astype(np.uint8))
+        seg_resized_itk.SetSpacing(properties_dict['itk_spacing'])
+        seg_resized_itk.SetOrigin(properties_dict['itk_origin'])
+        seg_resized_itk.SetDirection(properties_dict['itk_direction'])
+        sitk.WriteImage(seg_resized_itk, non_postprocessed_fname)
+
 
 
 def transformations():

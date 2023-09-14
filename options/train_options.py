@@ -88,7 +88,7 @@ class TrainOptions(BaseOptions):
                    help='list of decay epoch indices for multistep lr. must be increasing')
         self.parser.add_argument('--decay-epochs', type=float, default=90, metavar='N',
                    help='epoch interval to decay LR')
-        self.parser.add_argument('--warmup_epochs', type=int, default=50, metavar='N', ## warmup-epochs is for TIMM
+        self.parser.add_argument('--warmup_epochs', type=int, default=10, metavar='N', ## warmup-epochs is for TIMM
                    help='epochs to warmup LR, if scheduler supports')
         self.parser.add_argument('--warmup-prefix', action='store_true', default=False,
                    help='Exclude warmup period from decay schedule.'),
@@ -125,7 +125,7 @@ class TrainOptions(BaseOptions):
 
 ####################OPTION FOR LOSS function###################################""""
         self.parser.add_argument('--loss_option', type=str, default="DiceFocalLoss", help='choose loss function')        
-        self.parser.add_argument('--lambda_Loss', type=float, nargs='+', default=[1,1,1,1], help='lambda for compose loss, vector represented the weight of the loss')
+        self.parser.add_argument('--lambda_Loss', nargs='+', default=[1,1], help='lambda for compose loss, vector represented the weight of the loss')
 
 ####################OPTION AVAILABLE only with config contrastive###################################""""        
         self.parser.add_argument('--lambdaCNN', type=float, default=1e-1, help='lambda contrastive CNN')

@@ -388,11 +388,11 @@ class nnUNetAmosDataset(BaseDataset):
         
         #dval = DataLoader3D(self.dataset_val, np.array(plans['plans_per_stage'][0]['median_patient_size_in_voxels']), np.array(plans['plans_per_stage'][0]['median_patient_size_in_voxels']), self.opt.Val_batchSize)
         #tr, val = self.get_default_augmentation(dtran, np.array(self.opt.imageSize).astype(int))
-        tr, val,test = self.get_default_augmentation(dtran,dl_val, np.array(self.opt.imageSize).astype(int))
+        tr, val= self.get_default_augmentation(dtran,dl_val, np.array(self.opt.imageSize).astype(int))
         
-        self.train_loader, self.val_loader, self.test_loader=tr, val,test # test loader is not the test set is only used for the last epoch to have a real validation
+        self.train_loader, self.val_loader=tr, val# test loader is not the test set is only used for the last epoch to have a real validation
         
-        return self.train_loader, self.val_loader,self.test_loader
+        return self.train_loader, self.val_loader
     
     def __len__(self):
         return len(self.dataset_tr)+len(self.dataset_val)
@@ -403,36 +403,6 @@ class nnUNetAmosDataset(BaseDataset):
     def name(self):
         return self.opt.dataroot#self.opt.dataroot.split('/')[-2]    
     
-    
-
-class ConvertSegToRegionsTransform(AbstractTransform):
-    def __init__(self, regions: dict, seg_key: str = "label", output_key: str = "label", seg_channel: int = 0):
-        """
-        regions are tuple of tuples where each inner tuple holds the class indices that are merged into one region, example:
-        regions= ((1, 2), (2, )) will result in 2 regions: one covering the region of labels 1&2 and the other just 2
-        :param regions:
-        :param seg_key:
-        :param output_key:
-        """
-        self.seg_channel = seg_channel
-        self.output_key = output_key
-        self.seg_key = seg_key
-        self.regions = regions
-
-    def __call__(self, **data_dict):
-        seg = data_dict.get(self.seg_key)
-        num_regions = len(self.regions)
-        if seg is not None:
-            seg_shp = seg.shape
-            output_shape = list(seg_shp)
-            output_shape[1] = num_regions
-            region_output = np.zeros(output_shape, dtype=seg.dtype)
-            for b in range(seg_shp[0]):
-                for r, k in enumerate(self.regions.keys()):
-                    for l in self.regions[k]:
-                        region_output[b, r][seg[b, self.seg_channel] == l] = 1
-            data_dict[self.output_key] = region_output
-        return data_dict
     
     
     

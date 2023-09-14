@@ -25,6 +25,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", '--input_folder', help="pre-processing nnUNet test set",default='./nnUNet/data/nnUnet_raw/nnUNet_raw_data', required=False)
     parser.add_argument('-o', "--output_folder",default='predictions', required=False, help="folder for saving predictions")
+    parser.add_argument('-y_True', "--y_true_dir",default=None, required=False, help="folder for saving predictions")
     parser.add_argument('-t', '--task_name', help='task name or task ID, required.',
                         default='Task003_Hektor', required=False)
     parser.add_argument('-m', '--model', help='models name', default="CNN_h+VIT_n", required=False)
@@ -58,6 +59,10 @@ def main():
 
     #incluir una opcion para path de checkpoint
     args = parser.parse_args()
+
+
+    args.output_folderSoftmax='Softmax'
+
     #task_name = args.task_name# a borrar
     #input_folder = join(args.input_folder,task_name,'imagesTs')# a borrar
     #num_threads_preprocessing = args.num_threads_preprocessing
@@ -71,16 +76,19 @@ def main():
     args.folds=[int(args.folds[i]) for i in range(len(args.folds))]
     if mode=='Nfold':
         output_folder = [join('./nnUNet/data/nnUnet_raw/results',args.output_folder,args.task_name,encoder,modelname[i]) for i in range(len(args.folds))]
+        output_folderSoftmax = [join('./nnUNet/data/nnUnet_raw/results',args.output_folderSoftmax,args.task_name,encoder,modelname[i]) for i in range(len(args.folds))]
     else:
         output_folder=join('./nnUNet/data/nnUnet_raw/results',args.output_folder,args.task_name,encoder+'_Ensemble')
+        output_folderSoftmax=join('./nnUNet/data/nnUnet_raw/results',args.output_folderSoftmax,args.task_name,encoder+'_Ensemble')
     args.output_dir=output_folder
+    args.outputSoft_dir=output_folderSoftmax
 
     opt= [load_trainingSetup(join(chk_folder[i],'opt.txt'),args,i) for i in range(len(args.folds))]
     [print("using model stored in ", chk_folder[i]) for i in range(len(args.folds))]
    
     
     if mode=='Nfold':
-        Mode_NCrossval(args,opt,output_folder)
+        Mode_NCrossval(args,opt)
     elif mode=='MeanEnsemb':
         if args.task_name.split('_')[-1]=='BraTS2021':
             Mode_MeanEnsembBrats(args,opt)

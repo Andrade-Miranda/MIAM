@@ -133,11 +133,11 @@ class PICAIConfig():
             self.lr_scheduler=None
     ################################################################################################################################################
         
-
+        ###will depend of task
         self.post_trans = Compose(
                 [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
             )
-           
+           #[Activations(softmax=True), AsDiscrete(argmax=True,to_onehot=self.opt.output_nc)] [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
 
         #metrics
         self.dice_metricTrain = DiceMetric(include_background=False, reduction="mean",ignore_empty=True)
