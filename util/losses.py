@@ -238,7 +238,7 @@ class FL_and_CE_loss(nn.Module):
             ce_kwargs = {}
 
         self.aggregate = aggregate
-        self.fl = FocalLoss(apply_nonlin=apply_nonlin, **fl_kwargs)
+        self.fl = FocalLossBin(alpha=fl_kwargs['alpha'])
         self.ce = RobustCrossEntropyLoss(**ce_kwargs)
         self.alpha = alpha
 

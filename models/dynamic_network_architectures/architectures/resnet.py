@@ -1,7 +1,7 @@
 import torch
-from dynamic_network_architectures.building_blocks.residual_encoders import ResidualEncoder, BottleneckD, BasicBlockD
-from dynamic_network_architectures.building_blocks.helper import get_matching_pool_op, get_default_network_config
-from dynamic_network_architectures.building_blocks.simple_conv_blocks import ConvDropoutNormReLU
+from models.dynamic_network_architectures.building_blocks.residual_encoders import ResidualEncoder, BottleneckD, BasicBlockD
+from models.dynamic_network_architectures.building_blocks.helper import get_matching_pool_op, get_default_network_config
+from models.dynamic_network_architectures.building_blocks.simple_conv_blocks import ConvDropoutNormReLU
 from torch import nn
 
 _ResNet_CONFIGS = {

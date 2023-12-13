@@ -67,15 +67,17 @@ class PICAIConfig():
     def LoadConfig(self):
         
         self.resume_or_restart_training()
-        self.optimizer = create_optimizer(
-            self.opt, self.model)
+        if self.opt.opt!='sgd':
+           self.optimizer = create_optimizer(self.opt, self.model)
+        else:
+            self.optimizer = torch.optim.SGD(self.model.parameters(), self.opt.lr, weight_decay=self.opt.weight_decay,momentum=self.opt.momentum,nesterov=True)#self.opt.momentum
         
         # Allow Amp to perform casts as required by the opt_level
         self.loss_scaler = torch.cuda.amp.GradScaler()#NativeScaler() # if args.use_amp is False, this won't be used
         
         ##################LOSS CONFIGURATION##############################################""
         if self.opt.loss_option=='FL_and_CE':
-            self.loss_function = FL_and_CE_loss(fl_kwargs={'alpha':self.class_weights,'size_average':False},
+            self.loss_function = FL_and_CE_loss(fl_kwargs={'alpha':self.class_weights[-1],'size_average':False},
                                                ce_kwargs={'reduction': 'sum'},alpha=self.opt.lambda_Loss[0]).to(self.opt.device)#alpha represent the weight for each loss
         elif self.opt.loss_option=='FocalLossbin':
             self.loss_function=FocalLossBin(alpha=self.class_weights[-1]).to(self.opt.device)
@@ -117,7 +119,7 @@ class PICAIConfig():
             elif self.opt.sched == "warmup_cosine":
                 self.lr_scheduler = LinearWarmupCosineAnnealingLR(self.optimizer, warmup_epochs=self.opt.warmup_epochs, max_epochs=self.opt.epochs)
             elif self.opt.sched == "cosine_anneal":
-                self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.opt.epochs)
+                self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.opt.epochs*self.opt.dr)
             else:
                 self.lr_scheduler, _ =create_scheduler_v2(self.optimizer,
                                                         **scheduler_kwargs(self.opt),

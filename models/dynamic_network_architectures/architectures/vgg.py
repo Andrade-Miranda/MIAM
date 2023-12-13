@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from dynamic_network_architectures.building_blocks.plain_conv_encoder import PlainConvEncoder
-from dynamic_network_architectures.building_blocks.helper import get_matching_pool_op, get_default_network_config
+from models.dynamic_network_architectures.building_blocks.plain_conv_encoder import PlainConvEncoder
+from models.dynamic_network_architectures.building_blocks.helper import get_matching_pool_op, get_default_network_config
 
 _VGG_CONFIGS = {
     '16': {'features_per_stage': (64, 128, 256, 512, 512, 512), 'n_conv_per_stage': (2, 2, 2, 3, 3, 3),

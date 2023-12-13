@@ -90,6 +90,9 @@ class nnUNetDatasetTest(BaseDataset):
         task=self.opt.dataroot
         p = os.path.join(self.preprocessing_output_dir,task)        
         self.plans=load_pickle(join(p, opt.plan))
+
+        #set the len of the data
+        self.dataset_IDs = list(check_input_folder_and_return_caseIDs(self.opt.input_fold_prediction, load_pickle(join(p, self.opt.plan))['num_modalities']))
         
 
         #check if I have to fuse region, this is particular useful for brats dataset
@@ -104,7 +107,7 @@ class nnUNetDatasetTest(BaseDataset):
         
         task=self.opt.dataroot
         p = os.path.join(self.preprocessing_output_dir,task)
-        input_folder=self.opt.input_folder
+        input_folder=self.opt.input_fold_prediction
         assert isfile(join(p, self.opt.plan)), "Folder must contain a plans.pkl file"
         expected_num_modalities = load_pickle(join(p, self.opt.plan))['num_modalities']
         segmentation_export_kwargs=self.segmentation_export_kwargs
@@ -120,7 +123,7 @@ class nnUNetDatasetTest(BaseDataset):
                       len(i) == (len(j) + 12)] for j in case_ids]
         
         assert len(list_of_lists) == len(output_files)
-        if segs_from_prev_stage is not None: assert len(segs_from_prev_stage) == len(output_filenames)
+        if segs_from_prev_stage is not None: assert len(segs_from_prev_stage) == len(output_files)
         
         pool = Pool(self.opt.num_threads_nifti_save)
         results = []
@@ -172,7 +175,7 @@ class nnUNetDatasetTest(BaseDataset):
         return preprocessing
     
     def __len__(self):
-        return len(self.dataset_val)
+        return len(self.dataset_IDs)
     
 
     def name(self):

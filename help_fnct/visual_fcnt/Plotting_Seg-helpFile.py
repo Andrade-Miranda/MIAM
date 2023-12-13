@@ -12,6 +12,159 @@ Created on Thu Jun  3 11:23:08 2021
 import numpy as np
 import matplotlib.pyplot as plt
 
+import wandb
+
+#/*
+ ############ECE Plot#############################
+ax1 = plt.subplot(2, 1, 1)
+prob_true, prob_pred = calibration_curve(y_test,y_prob, n_bins=10,strategy='uniform')
+ax1.grid()
+ax1.set_title("ECE Calibration plot")
+self.dispCER_ECE = CalibrationDisplay(prob_true, prob_pred,y_prob)
+ax1.plot(prob_pred, prob_true,marker='o',label='Calibration plots')
+ax1.text(0.01, 0.95, 'ECE= '+ECE, fontsize=8, ha='left', va='top', color='blue')
+ax1.plot([0,1],[0,1],linestyle='--', color='gray',label='Perfect calibration')
+# Add histogram
+ax2 = plt.subplot(2, 1, 2)
+ax2.hist(self.dispCER_ECE.y_prob,
+            range=(0, 1),
+            bins=15,
+            label="",#self.opt.name,
+            )
+ax2.set(title="Histogram calibration plot", xlabel="Mean predicted probability", ylabel="Count")
+plt.tight_layout()
+plt.show()
+plt.savefig(os.path.join(self.opt.outputSoft_dir,'ECE.pdf'))
+plt.close()
+self.plot_calibration_curve(y_test, y_prob,strategy='uniform',title='ECE Plot',ECE_value=ECE, n_bins=20, ax=None, hist=True, normalize=False)
+############ADA ECE Plot#############################
+ax1 = plt.subplot(2, 1, 1)
+prob_trueADA, prob_predADA = calibration_curve(y_test,y_prob, n_bins=15,strategy='quantile')
+ax1.grid()
+ax1.set_title("ADA ECE Calibration plot")
+self.dispCER_ADAECE = CalibrationDisplay(prob_trueADA, prob_predADA,y_prob)
+ax1.plot(prob_predADA, prob_trueADA,marker='o',label='Calibration plots')
+ax1.text(0.05, 0.95, 'ECE= '+ADA_ECE, fontsize=8, ha='left', va='top', color='blue')
+ax1.plot([0,1],[0,1],linestyle='--', color='gray',label='Perfect calibration')
+# Add histogram
+ax2 = plt.subplot(2, 1, 2)
+ax2.hist(self.dispCER_ADAECE.y_prob,
+            range=(0, 1),
+            bins=15,
+            label="",#self.opt.name,
+            )
+ax2.set(title="Histogram calibration plot", xlabel="Mean predicted probability", ylabel="Count")
+plt.tight_layout()
+plt.show()
+plt.savefig(os.path.join(self.opt.outputSoft_dir,'ADA_ECE.pdf'))
+plt.close()
+#*/
+################plot wandb tables 
+
+    # 🐝 create a wandb table to log input image, ground_truth masks and predictions
+    #columns = ["filename", "image", "ground_truth", "prediction"]
+    #tableSeg = wandb.Table(columns=columns)
+    
+    # # 🐝
+    # if  opt.enable_wandb:
+    #     # Create a table with the columns to plot
+    #     all_valid_keys=[metricspercase[i]['filename'].split('/')[-1].split('.')[0] for i in range(len(metricspercase))]
+    #     val_dice=[metricspercase[i]['dice'][0] for i in range(len(metricspercase))]
+    #     id=list(range(len(metricspercase)))
+    #     data = [[case,x, y] for (case,x,y) in zip(all_valid_keys,id,val_dice)]
+    #     table = wandb.Table(data=data, columns = ["CasesID","ID","DSC"])
+    #     wandb.log({"ValScatter/plot" : wandb.plot.scatter(table, "ID", "DSC",
+    #                              title="Val cases vs DSC Scatter Plot")})
+        
+    #     data = [[case,y] for (case,y) in zip(all_valid_keys,val_dice)]
+    #     table = wandb.Table(data=data, columns = ["CasesID","DSC"])
+    #     wandb.log({"ValBar/plot" : wandb.plot.bar(table, "CasesID", "DSC",
+    #                              title="Val cases vs DSC bar"),
+    #                  "Test prediction" :tableSeg})
+
+
+
+    # # 🐝
+    # if  opt.enable_wandb:
+    #     opt.wandb_logger.log({
+    #             "rocTest" : wandb.plot.roc_curve([clasif_metrics.case_target[s] for s in clasif_metrics.subject_list],
+    #                                                     [[1-clasif_metrics.case_pred[s],clasif_metrics.case_pred[s]] for s in clasif_metrics.subject_list],
+    #                                                     title='ROC Test',classes_to_plot=1),
+    #             "prTest":wandb.plot.pr_curve([clasif_metrics.case_target[s] for s in clasif_metrics.subject_list], 
+    #                                                [[1-clasif_metrics.case_pred[s],clasif_metrics.case_pred[s]] for s in clasif_metrics.subject_list],
+    #                                                title='Precision vs Recall Test',classes_to_plot=1),
+    #             "Confusion Matrix Test WB":wandb.plot.confusion_matrix(
+    #                                      y_true=[clasif_metrics.case_target[s] for s in clasif_metrics.subject_list],
+    #                                     preds=[np.argmax([1-clasif_metrics.case_pred[s],clasif_metrics.case_pred[s]]) for s in clasif_metrics.subject_list],     
+    #                                     class_names=['Benign','Malign']),
+    #             "Confusion Matrix": wandb.sklearn.plot_confusion_matrix(y_true=[clasif_metrics.case_target[s] for s in clasif_metrics.subject_list],
+    #                                                                              y_pred=[np.argmax([1-clasif_metrics.case_pred[s],clasif_metrics.case_pred[s]]) for s in clasif_metrics.subject_list], 
+    #                                                                              labels=['Benign','Malign'])
+    #                                     }) 
+
+
+
+
+
+##########Plots matplots in wandb#############################
+
+        #### FROC plots
+        # data = [[x, y] for (x, y) in zip(self.fp_per_case, self.sensitivity)]
+        # table = wandb.Table(data=data, columns=["False positives per case", "Sensitivity"])
+        # self.wandb_logger.log(
+        #     {
+        #     "FROC": wandb.plot.line(table, "False positives per case", "Sensitivity", title="FROC")
+        #     }
+        # )           
+        # #### calibration plots
+        # random_guessing = np.linspace(0, 1, len(self.dispCER.prob_pred))
+        # # Combine Calibration diagram and Random Guessing in one plot
+        # self.wandb_logger.log({"Calibration diagram": wandb.plot.line_series(
+        #                         xs=[list(self.dispCER.prob_pred)] + [list(random_guessing)],
+        #                         ys=[list(self.dispCER.prob_true)] + [list(random_guessing)],
+        #                         keys=['Calibration','Reference'],
+        #                         title="Calibration diagram",
+        #                         xname='Mean confidence',
+        #                         )})
+        # y_prob=np.array([[metrics.case_pred[s]] for s in metrics.subject_list])
+        # y_test=np.array([metrics.case_target[s] for s in metrics.subject_list])
+        # # Combine Calibration diagram using plt
+        # f, ax = plt.subplots()
+        # prob_true, prob_pred = calibration_curve(y_test,y_prob, n_bins=10)
+        # ax.grid()
+        # ax.set_title("Calibration diagram-plt")
+        # self.dispCER = CalibrationDisplay(prob_true, prob_pred,y_prob)
+        # ax.plot(prob_pred, prob_true,marker='o',label='Calibration plots')
+        # ax.plot([0,1],[0,1],linestyle='--', color='gray',label='Perfect calibration')
+        # plt.tight_layout()
+        # plt.show()
+        # self.wandb_logger.log({"Calibration diagram-plt": plt})
+
+        # # Add histogram
+        # f, ax = plt.subplots()
+        # ax.hist(self.dispCER.y_prob,
+        #             range=(0, 1),
+        #             bins=20,
+        #             label=self.opt.name,
+        #             )
+        # ax.set(title=self.opt.name, xlabel="Mean predicted probability", ylabel="Count")
+        # plt.tight_layout()
+        # plt.show()
+        # self.wandb_logger.log({"Calibration Histogram-plt": plt})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

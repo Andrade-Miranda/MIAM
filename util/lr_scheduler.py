@@ -175,6 +175,6 @@ class poly_lr():
     def __init__(self,opt):
         self.opt=opt
 
-    def step_update(self,epoch, exponent=0.9):
+    def step(self,epoch, exponent=0.9):
         """Polynomial learning rate schedule"""
         return self.opt.lr * (1 - epoch / self.opt.epochs)**exponent

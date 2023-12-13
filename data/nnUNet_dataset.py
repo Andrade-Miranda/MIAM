@@ -150,7 +150,7 @@ class nnUNetDataset(BaseDataset):
         
         #default setting nnUNET dataloading
         self.pad_all_sides = None
-        self.oversample_foreground_percent = 0.66#0.33
+        self.oversample_foreground_percent = opt.oversample_foreground_percent
         
         
         #check if I have to fuse region, this is particular useful for brats dataset

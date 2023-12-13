@@ -12,7 +12,7 @@ from typing import Sequence, Tuple, Union
 from .EncoderConvNeXt import LayerNorm
 from timm.models.layers import DropPath
 from util.block import UPResBlock
-
+import numpy as np
 
 
 """
@@ -23,13 +23,12 @@ class CNN_decoder(nn.ModuleList):
     def __init__(
        self,
        spatial_dims,
-       num_modality,
+       multipath,
        features,
        norm_name,
        res_block,
        kernel_sizes,
-       stride, 
-
+       stride,
     ):
         super(CNN_decoder,self).__init__()
         self.decoderList=nn.ModuleList()
@@ -37,8 +36,8 @@ class CNN_decoder(nn.ModuleList):
         for i in range(len(features)-1):
             decoder = UnetrUpBlock(
                     spatial_dims=spatial_dims,
-                    in_channels=features[-i-1]* num_modality,
-                    out_channels=features[-i-2] * num_modality,
+                    in_channels=features[-i-1]* multipath,
+                    out_channels=features[-i-2] * multipath,
                     kernel_size=tuple(kernel_sizes[-i-1]),
                     upsample_kernel_size= tuple(stride[-i-1]),
                     norm_name=norm_name,
@@ -88,6 +87,42 @@ class CNN_VIT_decoder(nn.ModuleList):
             outvit = self.decoderList[j](outvit,x[-j-2])
             y.append(outvit)
         return y   
+    
+class MCNN_VIT_decoder(nn.ModuleList):
+
+    def __init__(
+       self,
+       spatial_dims,
+       num_modality,
+       features,
+       norm_name,
+       res_block,
+       kernel_sizes,
+       stride, 
+
+    ):
+        super(MCNN_VIT_decoder,self).__init__()
+        self.decoderList=nn.ModuleList()
+
+        features=tuple(list(features[:-1]* np.repeat(num_modality,len(features[:-1])))+[features[-1]])
+        for i in range(len(features)-1):
+            decoder = UnetrUpBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=features[-i-1],
+                    out_channels=features[-i-2],
+                    kernel_size=tuple(kernel_sizes[-i-1]),
+                    upsample_kernel_size= tuple(stride[-i-1]),
+                    norm_name=norm_name,
+                    res_block=res_block,
+                    )
+            self.decoderList.append(decoder)
+            
+    def forward(self, outvit,x):
+        y=[]
+        for j in range(len(self.decoderList)):
+            outvit = self.decoderList[j](outvit,x[-j-2])
+            y.append(outvit)
+        return y    
 
 class CNN_PuPMLA(nn.ModuleList):
 

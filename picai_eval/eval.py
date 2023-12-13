@@ -235,6 +235,7 @@ def make_evaluation_iterator(
 def evaluate(
     y_det: "Iterable[Union[npt.NDArray[np.float64], str, Path]]",
     y_true: "Iterable[Union[npt.NDArray[np.float64], str, Path]]",
+    bootstrap: bool = False,
     sample_weight: "Optional[Iterable[float]]" = None,
     subject_list: Optional[Iterable[Hashable]] = None,
     min_overlap: float = 0.10,
@@ -314,7 +315,7 @@ def evaluate(
         if isinstance(subject_list, Sized):
             total = len(subject_list)
         iterator = tqdm(iterator, desc='Evaluating', total=total)
-
+    idx_count=0
     for result in iterator:
         if isinstance(result, tuple):
             # single-threaded evaluation
@@ -344,6 +345,7 @@ def evaluate(
         case_pred=case_pred,
         case_weight=case_weight,
         lesion_weight=lesion_weight,
+        bootstrap=bootstrap
     )
 
     return metrics
@@ -353,6 +355,7 @@ def evaluate_folder(
     y_det_dir: Union[Path, str],
     y_true_dir: Optional[Union[Path, str]] = None,
     subject_list: Optional[Union[List[str], PathLike]] = None,
+    bootstrap: bool = False,
     pred_extensions: Optional[List[str]] = None,
     label_extensions: Optional[List[str]] = None,
     detection_map_postfixes: Optional[List[str]] = None,
@@ -483,4 +486,4 @@ def evaluate_folder(
     assert len(y_det), f"Did not find any predictions in {y_det_dir}!"
 
     # perform evaluation with compiled file lists
-    return evaluate(y_det=y_det, y_true=y_true, subject_list=subject_list, verbose=verbose, **kwargs)
+    return evaluate(y_det=y_det, y_true=y_true,bootstrap=bootstrap, subject_list=subject_list, verbose=verbose, **kwargs)

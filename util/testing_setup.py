@@ -24,6 +24,13 @@ import nibabel as nib
 import os
 from functools import partial
 from pathlib import Path
+from util import seg_metrics as sg
+import pandas as pd
+from help_fnct.UncertainSmallEmpty.evaluator import evaluate_folders
+from help_fnct.calibration.seg_calibration import Evaluate_Segcalibration_Folder
+import sys
+from medutils.medutils import load_itk
+
 
 from monai.transforms import (
     Compose,
@@ -34,6 +41,8 @@ from monai.transforms import (
     Activations,
 )
 
+import wandb
+#os.environ["WANDB_MODE"]="offline"
 
 from picai_eval import evaluate_folder
 from report_guided_annotation import extract_lesion_candidates
@@ -42,10 +51,8 @@ from report_guided_annotation import extract_lesion_candidates
 import SimpleITK as sitk
 from nnUNet.nnunet.preprocessing.preprocessing import get_lowres_axis, get_do_separate_z, resample_data_or_seg
 from batchgenerators.utilities.file_and_folder_operations import *
+from util.visualizer import Picai_ResultsPlots
 
-post_trans = Compose(
-                [Activations(sigmoid=True)]
-            )
 
 def predict_from_folder(opt=None):
     """
@@ -68,12 +75,17 @@ def predict_from_folder(opt=None):
     """
 
     print("loading parameters for folds,", opt.fold)
-    trainer= restore_Model(join(opt.checkpoints_dir,opt.checkpoint),opt)
+    trainer= restore_Model(join(opt.checkpoints_dir,opt.chkname),opt)
 
 
     return trainer
 
-
+def enable_dropout(model):
+    """ Function to enable the dropout layers during test-time """
+    for m in model.modules():
+        if m.__class__.__name__.startswith('Dropout'):
+            m.train()
+    return model
 
 def restore_Model(file,opt):
     
@@ -105,12 +117,14 @@ def load_trainingSetup(file_name,args,numiter):
             elif key=='dataroot':
                 value=args.task_name
             elif key=='output_dir':
-                if args.mode=='MeanEnsemb':
-                    value=args.output_dir
+                if args.mode=='MeanEnsemb' or args.mode=='MCdropOut':
+                    value=args.output_pred_dir
                 else:
-                    value=args.output_dir[numiter]
+                    value=args.output_pred_dir[numiter]
             elif key=='checkpoints_dir':
                 value=args.checkpoints_dir[numiter]
+            elif key=='chkname':
+                value=args.chkname
             elif key=='pretrained':
                  if value=='None':
                      value=None
@@ -128,6 +142,11 @@ def load_trainingSetup(file_name,args,numiter):
                     value='Test_ConfigBrats'
                 else:
                     value='TestConfig'
+            elif key=='project':
+                if args.enable_wandb:
+                    value=args.project
+                else:
+                    value=None
             elif key=='conv_kernel_sizes':
                 newValue=value.translate({ord(i): None for i in '[,] '})
                 value= [(list(map(int,newValue[x:x+3]))) for x in range(0, len(newValue), 3)]
@@ -139,6 +158,9 @@ def load_trainingSetup(file_name,args,numiter):
                 value= [int(x) for x in newValue]
             elif key=='hidden_size':
                 value=int(value)
+            elif key=='dropout_rate':
+                if args.mode=='MCdropOut':
+                    value=args.MCDropOutRate
             elif key=='mlp_dim':
                 value=int(value)
             elif key=='num_heads':
@@ -173,7 +195,6 @@ def load_trainingSetup(file_name,args,numiter):
                 value=False
                
             lista.append((key,value))
-        lista.append(('checkpoint',args.chkname))
         
         if args.task_name.split('_')[-1]=='BraTS2021':
             lista.append(('region_class_order',(2,1,4)))
@@ -181,11 +202,17 @@ def load_trainingSetup(file_name,args,numiter):
         else:
             lista.append(('region_class_order',None))
             lista.append(('isbrats',False))
-        
-        lista.append(('input_folder',args.input_folder))
-        lista.append(('outputSoft_dir',args.outputSoft_dir[numiter]))
-        lista.append(('num_threads_preprocessing',args.num_threads_preprocessing))
-        lista.append(('num_threads_nifti_save',args.num_threads_nifti_save))
+        for var_name in dir(args):
+            if not var_name.startswith("__") and not var_name=='model' and not var_name.startswith("_") and not var_name=='GPU' and not var_name=='task_name' and not var_name=='Nfolds':
+                var_value=getattr(args,var_name)
+                if type(var_value) == list:
+                    lista.append((var_name,var_value[numiter]))
+                else:
+                    lista.append((var_name,var_value))
+        #lista.append(('input_folder',args.input_folder))
+        #lista.append(('outputSoft_dir',args.outputSoft_dir[numiter]))
+        #lista.append(('num_threads_preprocessing',args.num_threads_preprocessing))
+        #lista.append(('num_threads_nifti_save',args.num_threads_nifti_save))
         
         opt=dict(lista)
         if opt['encoder'] in ['VIT_n','VIT_s','VIT_m','MVIT_n','MVIT_s','MVIT_m','CNN+VIT2Stream','SegResNetVAE','SegResNet','UNETR','Unet','SwinTrans3D','MCNN_h']:
@@ -233,19 +260,38 @@ def check_input_folder_and_return_caseIDs(input_folder, expected_num_modalities)
 
     return maybe_case_ids
 
-def Mode_NCrossval(args,opt):#### need to be updated
-
-    for i in range(len(args.folds)):
-
-        maybe_mkdir_p(opt[i].output_dir)
+################### Mode NCrossval###############################
+def Mode_NCrossval(opt,Nfolds):
+    
+    for i in range(len(Nfolds)):
+        if not opt[i].sigmoid:
+            post_trans = Compose(
+                [Activations(softmax=True)]#[Activations(sigmoid=True)]
+            )
+        else:
+            post_trans = Compose(
+                [Activations(sigmoid=True)]
+            )
+        ####check if wandb is available
+        if opt[i].enable_wandb:
+            dir_wandb=os.makedirs(os.path.join('wandb'), exist_ok=True)
+            wandb_logger = wandb.init(project=opt[i].project,
+                                    entity="xamus86",
+                                    config=opt[i],
+                                    name=opt[i].name,
+                                    dir=dir_wandb)
+        else:
+            wandb_logger=None
+        createPlots=Picai_ResultsPlots(opt[i],wandb_logger)
+        maybe_mkdir_p(opt[i].output_dir)##check if outputput dir exist
         ######create a list and a directory to save softmax prediction
-        if args.saveProb:
+        if opt[i].saveSoftmax:
             subject_list=[]
             maybe_mkdir_p(opt[i].outputSoft_dir)
         ####################################
-        model=predict_from_folder(opt[i]).eval() 
-        data_loader = CreateDataLoader(opt[i])
-        testConfig=TrainSetup(opt[i],model)
+        model=predict_from_folder(opt[i]).eval() #load model
+        data_loader = CreateDataLoader(opt[i]) #create dataloader
+        testConfig=TrainSetup(opt[i],model) #load test setup
         test_loader = data_loader.load_test()
         model.eval()
         with torch.no_grad():#Context-manager that disabled gradient calculation.
@@ -255,51 +301,383 @@ def Mode_NCrossval(args,opt):#### need to be updated
                     data = np.load(val_data)
                     os.remove(val_data)
                     val_data= data
-                val_inputs=torch.from_numpy(val_data)[None,...].to(opt[i].device)[-1][None,:]
-                #val_outputsSoftmax=Prostate_Tumor_Augmentation(val_inputs,testConfig)
-                #val_outputs_seg = torch.argmax(torch.softmax(val_outputs,dim=1),dim=1)
-                #val_outputsSoftmax = torch.softmax(val_outputs,dim=1)
+                val_inputs=torch.from_numpy(val_data)[None,...].to(opt[i].device)
                 val_outputs = testConfig.Config.inference(val_inputs)
-                val_outputs_seg = testConfig.Config.post_trans(val_outputs[0][-1][None,...])
-                val_outputsSoftmax = post_trans(val_outputs[:,-1])
 
+                if opt[i].sigmoid:
+                    val_outputs_seg = testConfig.Config.post_trans(val_outputs[0][-1][None,...])
+                    val_outputsSoftmax = post_trans(val_outputs[:,-1])
+                else:
+                    val_outputs_seg = testConfig.Config.post_trans(val_outputs[0])
+                    val_outputsSoftmax = post_trans(val_outputs[0])[-1][None,...]
+                #save segmentation
                 out_fname=output_filename
                 save_segmentation_nifti_from_softmax(val_outputs_seg.detach().cpu(), out_fname,
                                          dct, order=1,
                                          region_class_order= opt[i].region_class_order,
-                                         seg_postprogess_fn= None, seg_postprocess_args= None,
+                                         seg_postprogess_fn= testConfig.Config.postprocessing, 
+                                         seg_postprocess_args= {out_fname},
                                          resampled_npz_fname= None,
                                          non_postprocessed_fname= None, force_separate_z= None,
                                          interpolation_order_z= 0, verbose= True,isbrats=opt[i].isbrats)
                 
                 # save softmax prediction
-                if args.saveProb:
+                if opt[i].saveSoftmax:
                     subject_list +=[output_filename.split('/')[-1].split('.')[0]]
+                    # save complete softmax prediction only use prostate to postprocessing
                     save_segmentation_nifti_softmax(val_outputsSoftmax.detach().cpu(), join(opt[i].outputSoft_dir,output_filename.split('/')[-1]),
                                          dct, order=1,
                                          region_class_order= opt[i].region_class_order,
-                                         seg_postprogess_fn= None, seg_postprocess_args= None,
+                                         seg_postprogess_fn= testConfig.Config.postprocessing, seg_postprocess_args= {out_fname},
                                          resampled_npz_fname= None,
                                          non_postprocessed_fname= None, force_separate_z= None,
                                          interpolation_order_z= 0, verbose= True,isbrats=opt[i].isbrats)
 
-
                 del val_outputsSoftmax,val_outputs_seg
-        
-        if args.y_true_dir is not None:
-            print("Evaluate segmentation and/or classification performance",flush=True)
-            metrics = evaluate_folder(y_det_dir=Path(opt[i].outputSoft_dir),
-                              y_true_dir=args.y_true_dir,
+        #### need to include a condition for the case that do not include ground truth########
+        #### also a condition to decide which type of evaluation is going to be performed #### (classification, segmentation)
+        #check if subject_list is not empty
+        if not subject_list:
+            subject_list=data_loader.dataset.dataset_IDs
+        subject_list.sort()
+        if opt[i].y_true_dir is not None:
+            # perform classification metrics with bootstrapping
+            clasif_metrics = evaluate_folder(y_det_dir=Path(opt[i].outputSoft_dir),
+                              y_true_dir=opt[i].y_true_dir,
                               subject_list=subject_list,
-                              y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred,threshold="dynamic")[0],
+                              bootstrap = True,
+                              y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred,threshold=0.5)[0],#lambda pred: extract_lesion_candidates(pred,threshold="dynamic")[0],
                               detection_map_postfixes=[""],
-                              label_postfixes=[""],num_parallel_calls=2
+                              label_postfixes=[""],num_parallel_calls=1,overlap_func = 'DSC'
                             )
-        
-            metrics.save(Path(opt[i].outputSoft_dir) / "metrics.json")
+            # perform classification metrics without bootstrapping
+            clasif_metrics.save_full(Path(opt[i].outputSoft_dir) / "metrics.json")
+            #save precision recall
+            PRData=pd.DataFrame({'precision':clasif_metrics.precision,'recall':clasif_metrics.recall})
+            PRData_file = Path(Path(opt[i].outputSoft_dir)) / "PRData.csv"
+            PRData.to_csv(PRData_file, index=False)
+            #save ROC
+            ROCData=pd.DataFrame({'TPR':clasif_metrics.case_TPR,'FPR':clasif_metrics.case_FPR})
+            ROCData_file = Path(Path(opt[i].outputSoft_dir)) / "ROCData.csv"
+            ROCData.to_csv(ROCData_file, index=False)
+            #save FROC
+            FROCData=pd.DataFrame({'sensitivity':clasif_metrics.lesion_TPR,'fp_per_case':clasif_metrics.lesion_FPR})
+            FROCData_file = Path(Path(opt[i].outputSoft_dir)) / "FROCData.csv"
+            FROCData.to_csv(FROCData_file, index=False)
+
+            #sumary
+            sumary=pd.DataFrame({'AP':[clasif_metrics.AP],'Ranking':[clasif_metrics.score],'AUROC':[clasif_metrics.auroc],'FROC':[clasif_metrics.aufroc]})
+            sumary_file = Path(Path(opt[i].outputSoft_dir)) / "sumary.csv"
+            sumary.to_csv(sumary_file, index=False)
             print(f"Evaluation of training performance finished for fold {opt[i].fold}.")
+            # save classification with bootstrapping
+            clasif_metrics.save_fullBootstrap(Path(opt[i].outputSoft_dir) / "metrics_bootstrap.json")
+
+            #calibration segmentation
+            calibration_values=Evaluate_Segcalibration_Folder(
+                                            gdth_path=opt[i].y_true_dir,
+                                            pred_path=opt[i].outputSoft_dir,
+                                            mask_path=opt[i].postpro_dir,
+                                            outputpath=opt[i].outputSoft_dir)
+            #sumary calibration and misclassification
+            _,_,ECE,ADA_ECE,ks_test,prr,AUC,_,_,_,_,_=calibration_values
+            sumaryCalib=pd.DataFrame({'ECE':[ECE.item()],'ADA_ECE':[ADA_ECE.item()],'ks_test':[ks_test],'PRR-voxel':[prr],'AUC-voxel':[AUC]})
+            sumary_file = Path(Path(opt[i].outputSoft_dir)) / "sumary_calibration.csv"
+            sumaryCalib.to_csv(sumary_file, index=False)
+            #segmentation metrics
+            labels= [i for i in range(opt[i].output_nc)]
+            seg_metrics=sg.write_metrics(labels=labels[1:],gdth_path=opt[i].y_true_dir,
+                                         pred_path=opt[i].output_dir,
+                                         csv_file=os.path.join(opt[i].output_dir,'metrics2.csv'),
+                                         metrics=['dice', 'jaccard','vs', 'hd95','msd','mdsd','nsd','ba','barycentre'])
+            
+            ####evaluation using USE evaluator########################""""""""""""""
+            UseEvaluator=evaluate_folders(
+                folder_with_gts=opt[i].y_true_dir,
+                folder_with_predictions=opt[i].output_dir,
+                th=0.01,
+                labels=tuple(labels),
+                name='Use_evaluator')
+            #######################################################
+
+            createPlots.Plot_curves(clasif_metrics,seg_metrics,calibration_values,UseEvaluator)
+        
+############################################################################################################################
+
+################### Mode Mode_MeanEnsemb###############################
+def Mode_MeanEnsemb(opt,Nfolds):
+#Use only use first fold to start the basic set up.
+    ####check if wandb is available
+    if opt[0].enable_wandb:
+        dir_wandb=os.makedirs(os.path.join('wandb'), exist_ok=True)
+        wandb_logger = wandb.init(project=opt[0].project,
+                                    entity="xamus86",
+                                    config=opt[0],
+                                    name=opt[0].nameRun+'_ensemble',
+                                    dir=dir_wandb)
+    else:
+        wandb_logger=None
+    createPlots=Picai_ResultsPlots(opt[0],wandb_logger)
+    maybe_mkdir_p(opt[0].output_dir)##check if outputput dir exist
+    ######create a list and a directory to save softmax prediction
+    if opt[0].saveSoftmax:
+        subject_list=[]
+        maybe_mkdir_p(opt[0].outputSoft_dir)
+    ####################################    
+    data_loader = CreateDataLoader(opt[0])
+    test_loader = data_loader.load_test()#as is the same model use same pre-processing
+    models=[predict_from_folder(opt[i]).eval() for i in range(len(Nfolds))]
+    testConfig=[TrainSetup(opt[i],models[i]) for i in range(len(Nfolds))]
+
+    with torch.no_grad():#Context-manager that disabled gradient calculation.
+        for preprocessed in test_loader:
+            output_filename, (val_data, dct) = preprocessed
+            if isinstance(val_data, str):
+                data = np.load(val_data)
+                os.remove(val_data)
+                val_data= data
+            val_inputs=torch.from_numpy(val_data)[None,...].to(opt[0].device)
+            val_outputs = [testConfig[i].Config.inference(val_inputs) for i in range(len(Nfolds))]
+
+            val_outputsSoftmax=torch.stack([testConfig[j].Config.post_trans(val_outputs[j][0][-1][None,...]) for j in range(len(val_outputs))],dim=0).mean(dim=0)
+            val_outputs_seg = testConfig[0].Config.postLast(val_outputsSoftmax)            
+
+            #save segmentation
+            out_fname=output_filename
+            save_segmentation_nifti_from_softmax(val_outputs_seg.detach().cpu(), out_fname,
+                                     dct, order=1,
+                                     region_class_order= opt[0].region_class_order,
+                                     seg_postprogess_fn= testConfig[0].Config.postprocessing, 
+                                     seg_postprocess_args= {out_fname},
+                                     resampled_npz_fname= None,
+                                     non_postprocessed_fname= None, force_separate_z= None,
+                                     interpolation_order_z= 0, verbose= True,isbrats=opt[0].isbrats)
+            
+            # save softmax prediction
+            if opt[0].saveSoftmax:
+                subject_list +=[output_filename.split('/')[-1].split('.')[0]]
+                # save complete softmax prediction only use prostate to postprocessing
+                save_segmentation_nifti_softmax(val_outputsSoftmax.detach().cpu(), join(opt[0].outputSoft_dir,output_filename.split('/')[-1]),
+                                     dct, order=1,
+                                     region_class_order= opt[0].region_class_order,
+                                     seg_postprogess_fn= testConfig[0].Config.postprocessing, seg_postprocess_args= {out_fname},
+                                     resampled_npz_fname= None,
+                                     non_postprocessed_fname= None, force_separate_z= None,
+                                     interpolation_order_z= 0, verbose= True,isbrats=opt[0].isbrats)
+
+            del val_outputsSoftmax,val_outputs_seg
+    #### need to include a condition for the case that do not include ground truth########
+    #### also a condition to decide which type of evaluation is going to be performed #### (classification, segmentation)
+    #check if subject_list is not empty
+    if not subject_list:
+        subject_list=data_loader.dataset.dataset_IDs
+    subject_list.sort()
+    if opt[0].y_true_dir is not None:
+        # perform classification metrics with bootstrapping
+        clasif_metrics = evaluate_folder(y_det_dir=Path(opt[0].outputSoft_dir),
+                          y_true_dir=opt[0].y_true_dir,
+                          subject_list=subject_list,
+                          bootstrap = True,
+                          y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred,threshold=0.5)[0],#lambda pred: extract_lesion_candidates(pred,threshold="dynamic")[0],
+                          detection_map_postfixes=[""],
+                          label_postfixes=[""],num_parallel_calls=1,overlap_func = 'DSC'
+                        )
+        # perform classification metrics without bootstrapping
+        clasif_metrics.save_full(Path(opt[0].outputSoft_dir) / "metrics.json")
+        #save precision recall
+        PRData=pd.DataFrame({'precision':clasif_metrics.precision,'recall':clasif_metrics.recall})
+        PRData_file = Path(Path(opt[0].outputSoft_dir)) / "PRData.csv"
+        PRData.to_csv(PRData_file, index=False)
+        #save ROC
+        ROCData=pd.DataFrame({'TPR':clasif_metrics.case_TPR,'FPR':clasif_metrics.case_FPR})
+        ROCData_file = Path(Path(opt[0].outputSoft_dir)) / "ROCData.csv"
+        ROCData.to_csv(ROCData_file, index=False)
+        #save FROC
+        FROCData=pd.DataFrame({'sensitivity':clasif_metrics.lesion_TPR,'fp_per_case':clasif_metrics.lesion_FPR})
+        FROCData_file = Path(Path(opt[0].outputSoft_dir)) / "FROCData.csv"
+        FROCData.to_csv(FROCData_file, index=False)
+
+        #sumary
+        sumary=pd.DataFrame({'AP':[clasif_metrics.AP],'Ranking':[clasif_metrics.score],'AUROC':[clasif_metrics.auroc],'FROC':[clasif_metrics.aufroc]})
+        sumary_file = Path(Path(opt[0].outputSoft_dir)) / "sumary.csv"
+        sumary.to_csv(sumary_file, index=False)
+        print(f"Evaluation of training performance finished for ensembling of {Nfolds} folds.")
+        # save classification with bootstrapping
+        clasif_metrics.save_fullBootstrap(Path(opt[0].outputSoft_dir) / "metrics_bootstrap.json")
+
+        #calibration segmentation
+        calibration_values=Evaluate_Segcalibration_Folder(
+                                        gdth_path=opt[0].y_true_dir,
+                                        pred_path=opt[0].outputSoft_dir,
+                                        mask_path=opt[0].postpro_dir,
+                                        outputpath=opt[0].outputSoft_dir)
+        #sumary calibration and misclassification
+        _,_,ECE,ADA_ECE,ks_test,prr,AUC,_,_,_,_,_=calibration_values
+        sumaryCalib=pd.DataFrame({'ECE':[ECE.item()],'ADA_ECE':[ADA_ECE.item()],'ks_test':[ks_test],'PRR-voxel':[prr],'AUC-voxel':[AUC]})
+        sumary_file = Path(Path(opt[0].outputSoft_dir)) / "sumary_calibration.csv"
+        sumaryCalib.to_csv(sumary_file, index=False)
+        #segmentation metrics
+        labels= [i for i in range(opt[0].output_nc)]
+        seg_metrics=sg.write_metrics(labels=labels[1:],gdth_path=opt[0].y_true_dir,
+                                     pred_path=opt[0].output_dir,
+                                     csv_file=os.path.join(opt[0].output_dir,'metrics2.csv'),
+                                     metrics=['dice', 'jaccard','vs', 'hd95','msd','mdsd','nsd','ba','barycentre'])
+        
+        ####evaluation using USE evaluator########################""""""""""""""
+        UseEvaluator=evaluate_folders(
+            folder_with_gts=opt[0].y_true_dir,
+            folder_with_predictions=opt[0].output_dir,
+            th=0.01,
+            labels=tuple(labels),
+            name='Use_evaluator')
+        #######################################################
+
+        createPlots.Plot_curves(clasif_metrics,seg_metrics,calibration_values,UseEvaluator)
+
+############################################################################################################################
+
+################### Mode Mode_MCdropout###############################
+def Mode_MCdropout(opt,Nfolds):
+    forward_passes=100 # by default
+    #Use only use first fold to start the basic set up.
+    ####check if wandb is available
+    if opt[0].enable_wandb:
+        dir_wandb=os.makedirs(os.path.join('wandb'), exist_ok=True)
+        wandb_logger = wandb.init(project=opt[0].project,
+                                    entity="xamus86",
+                                    config=opt[0],
+                                    name=opt[0].nameRun+'_ensemble',
+                                    dir=dir_wandb)
+    else:
+        wandb_logger=None
+    createPlots=Picai_ResultsPlots(opt[0],wandb_logger)
+    maybe_mkdir_p(opt[0].output_dir)##check if outputput dir exist
+    ######create a list and a directory to save softmax prediction
+    if opt[0].saveSoftmax:
+        subject_list=[]
+        maybe_mkdir_p(opt[0].outputSoft_dir)
+    ####################################    
+    data_loader = CreateDataLoader(opt[0])
+    test_loader = data_loader.load_test()#as is the same model use same pre-processing
 
     
+    models=[enable_dropout(predict_from_folder(opt[i]).eval()) for i in range(len(Nfolds))]
+    testConfig=[TrainSetup(opt[i],models[i]) for i in range(len(Nfolds))]
+
+    for preprocessed in test_loader:
+        output_filename, (val_data, dct) = preprocessed
+        if isinstance(val_data, str):
+            data = np.load(val_data)
+            os.remove(val_data)
+            val_data= data
+        val_inputs=torch.from_numpy(val_data)[None,...].to(opt[0].device)
+        predictions = []
+        for passes in range(forward_passes):
+            with torch.no_grad():#Context-manager that disabled gradient calculation.
+                val_outputs = [testConfig[i].Config.inference(val_inputs) for i in range(len(Nfolds))]
+                val_outputsSoftmax=torch.stack([testConfig[j].Config.post_trans(val_outputs[j][0][-1][None,...]) for j in range(len(val_outputs))],dim=0).mean(dim=0)
+            predictions.append(val_outputsSoftmax.detach().cpu().numpy())
+        #####################
+        ## check metrics per dropout forward pass
+        ### how i can implement this
+        ##########################################
+        val_outputsSoftmax = np.mean(np.asarray(predictions),axis=0)
+        val_outputs_seg = testConfig[0].Config.postLast(val_outputsSoftmax)  
+                 
+        #save segmentation
+        out_fname=output_filename
+        save_segmentation_nifti_from_softmax(val_outputs_seg.detach().cpu(), out_fname,
+                                     dct, order=1,
+                                     region_class_order= opt[0].region_class_order,
+                                     seg_postprogess_fn= testConfig[0].Config.postprocessing, 
+                                     seg_postprocess_args= {out_fname},
+                                     resampled_npz_fname= None,
+                                     non_postprocessed_fname= None, force_separate_z= None,
+                                     interpolation_order_z= 0, verbose= True,isbrats=opt[0].isbrats)
+            
+        # save softmax prediction
+        if opt[0].saveSoftmax:
+            subject_list +=[output_filename.split('/')[-1].split('.')[0]]
+            # save complete softmax prediction only use prostate to postprocessing
+            save_segmentation_nifti_softmax(torch.from_numpy(val_outputsSoftmax).detach().cpu(), join(opt[0].outputSoft_dir,output_filename.split('/')[-1]),
+                                     dct, order=1,
+                                     region_class_order= opt[0].region_class_order,
+                                     seg_postprogess_fn= testConfig[0].Config.postprocessing, seg_postprocess_args= {out_fname},
+                                     resampled_npz_fname= None,
+                                     non_postprocessed_fname= None, force_separate_z= None,
+                                     interpolation_order_z= 0, verbose= True,isbrats=opt[0].isbrats)
+
+        del val_outputsSoftmax,val_outputs_seg
+    #### need to include a condition for the case that do not include ground truth########
+    #### also a condition to decide which type of evaluation is going to be performed #### (classification, segmentation)
+    #check if subject_list is not empty
+    if not subject_list:
+        subject_list=data_loader.dataset.dataset_IDs
+    subject_list.sort()
+    if opt[0].y_true_dir is not None:
+        # perform classification metrics with bootstrapping
+        clasif_metrics = evaluate_folder(y_det_dir=Path(opt[0].outputSoft_dir),
+                          y_true_dir=opt[0].y_true_dir,
+                          subject_list=subject_list,
+                          bootstrap = True,
+                          y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred,threshold=0.5)[0],#lambda pred: extract_lesion_candidates(pred,threshold="dynamic")[0],
+                          detection_map_postfixes=[""],
+                          label_postfixes=[""],num_parallel_calls=1,overlap_func = 'DSC'
+                        )
+        # perform classification metrics without bootstrapping
+        clasif_metrics.save_full(Path(opt[0].outputSoft_dir) / "metrics.json")
+        #save precision recall
+        PRData=pd.DataFrame({'precision':clasif_metrics.precision,'recall':clasif_metrics.recall})
+        PRData_file = Path(Path(opt[0].outputSoft_dir)) / "PRData.csv"
+        PRData.to_csv(PRData_file, index=False)
+        #save ROC
+        ROCData=pd.DataFrame({'TPR':clasif_metrics.case_TPR,'FPR':clasif_metrics.case_FPR})
+        ROCData_file = Path(Path(opt[0].outputSoft_dir)) / "ROCData.csv"
+        ROCData.to_csv(ROCData_file, index=False)
+        #save FROC
+        FROCData=pd.DataFrame({'sensitivity':clasif_metrics.lesion_TPR,'fp_per_case':clasif_metrics.lesion_FPR})
+        FROCData_file = Path(Path(opt[0].outputSoft_dir)) / "FROCData.csv"
+        FROCData.to_csv(FROCData_file, index=False)
+
+        #sumary
+        sumary=pd.DataFrame({'AP':[clasif_metrics.AP],'Ranking':[clasif_metrics.score],'AUROC':[clasif_metrics.auroc],'FROC':[clasif_metrics.aufroc]})
+        sumary_file = Path(Path(opt[0].outputSoft_dir)) / "sumary.csv"
+        sumary.to_csv(sumary_file, index=False)
+        print(f"Evaluation of training performance finished for ensembling of {Nfolds} folds.")
+        # save classification with bootstrapping
+        clasif_metrics.save_fullBootstrap(Path(opt[0].outputSoft_dir) / "metrics_bootstrap.json")
+
+        #calibration segmentation
+        calibration_values=Evaluate_Segcalibration_Folder(
+                                        gdth_path=opt[0].y_true_dir,
+                                        pred_path=opt[0].outputSoft_dir,
+                                        mask_path=opt[0].postpro_dir,
+                                        outputpath=opt[0].outputSoft_dir)
+        #sumary calibration and misclassification
+        _,_,ECE,ADA_ECE,ks_test,prr,AUC,_,_,_,_,_=calibration_values
+        sumaryCalib=pd.DataFrame({'ECE':[ECE.item()],'ADA_ECE':[ADA_ECE.item()],'ks_test':[ks_test],'PRR-voxel':[prr],'AUC-voxel':[AUC]})
+        sumary_file = Path(Path(opt[0].outputSoft_dir)) / "sumary_calibration.csv"
+        sumaryCalib.to_csv(sumary_file, index=False)
+        #segmentation metrics
+        labels= [i for i in range(opt[0].output_nc)]
+        seg_metrics=sg.write_metrics(labels=labels[1:],gdth_path=opt[0].y_true_dir,
+                                     pred_path=opt[0].output_dir,
+                                     csv_file=os.path.join(opt[0].output_dir,'metrics2.csv'),
+                                     metrics=['dice', 'jaccard','vs', 'hd95','msd','mdsd','nsd','ba','barycentre'])
+        
+        ####evaluation using USE evaluator########################""""""""""""""
+        UseEvaluator=evaluate_folders(
+            folder_with_gts=opt[0].y_true_dir,
+            folder_with_predictions=opt[0].output_dir,
+            th=0.01,
+            labels=tuple(labels),
+            name='Use_evaluator')
+        #######################################################
+
+        createPlots.Plot_curves(clasif_metrics,seg_metrics,calibration_values,UseEvaluator)
+
+############################################################################################################################
+
 
 def Prostate_Tumor_Augmentation(valid_images,testConfig):
     valid_images = [valid_images, torch.flip(valid_images, [4])]
@@ -348,8 +726,8 @@ def Mode_MeanEnsembBrats(args,opt):#we don't applied argmax or discrete give dir
             del val_outputs
             del val_data
             torch.cuda.empty_cache()
-
-
+ 
+"""
 def Mode_MeanEnsemb(args,opt):
     output_folder = args.output_dir
     maybe_mkdir_p(output_folder)
@@ -381,7 +759,7 @@ def Mode_MeanEnsemb(args,opt):
             del val_outputs
             del val_data
             torch.cuda.empty_cache()
-            
+"""            
 
 def save_segmentation_nifti_from_softmax(segmentation_softmax, out_fname,
                                          properties_dict, order=1,

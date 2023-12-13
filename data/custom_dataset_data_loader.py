@@ -15,7 +15,7 @@ def CreateDataset(opt):
     elif opt.dataset_mode == 'nnUNetExtchan':
         from data.nnUNetExtchan_dataset import nnUNetExtchanDataset
         dataset = nnUNetExtchanDataset()
-    elif opt.dataset_mode == 'test' or opt.dataset_mode=='MeanEnsemb' or opt.dataset_mode=='Nfold' or opt.dataset_mode=='TTA':
+    elif opt.dataset_mode == 'test' or opt.dataset_mode=='MeanEnsemb' or opt.dataset_mode=='Nfold' or opt.dataset_mode=='TTA' or opt.dataset_mode=='MCdropOut':
         from data.nnUNet_datasetTest import nnUNetDatasetTest
         dataset = nnUNetDatasetTest()   
     else:

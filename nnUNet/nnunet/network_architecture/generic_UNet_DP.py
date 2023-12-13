@@ -14,12 +14,12 @@
 
 
 import torch
-from nnunet.network_architecture.generic_UNet import Generic_UNet
-from nnunet.network_architecture.initialization import InitWeights_He
-from nnunet.training.loss_functions.crossentropy import RobustCrossEntropyLoss
-from nnunet.training.loss_functions.dice_loss import get_tp_fp_fn_tn
-from nnunet.utilities.nd_softmax import softmax_helper
-from nnunet.utilities.tensor_utilities import sum_tensor
+from nnUNet.nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnUNet.nnunet.network_architecture.initialization import InitWeights_He
+from nnUNet.nnunet.training.loss_functions.crossentropy import RobustCrossEntropyLoss
+from nnUNet.nnunet.training.loss_functions.dice_loss import get_tp_fp_fn_tn
+from nnUNet.nnunet.utilities.nd_softmax import softmax_helper
+from nnUNet.nnunet.utilities.tensor_utilities import sum_tensor
 from torch import nn
 
 

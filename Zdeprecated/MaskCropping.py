@@ -12,7 +12,8 @@ import SimpleITK as sitk
 def generate_settings(
     archive_dir: Path,
     output_path: Path,
-    annotations_dir: Path
+    annotations_dir: Path,
+    filesToCrop=None
     ):
     """
     Create mha2nnunet_settings.json (for inference) for an MHA archive with the following structure:
@@ -27,12 +28,17 @@ def generate_settings(
         (parent folder should exist)
     """
     archive_list = []
+    if filesToCrop is not None:
+        # Opening JSON file
+        f  = open(filesToCrop)
+        data = json.load(f)
+        data=[i.split('_')[0] for i in data[0]['data']]
 
     # traverse MHA archive
     for patient_id in tqdm(sorted(os.listdir(archive_dir))):
         # traverse each patient's studies
         patient_dir = os.path.join(archive_dir, patient_id)
-        if not os.path.isdir(patient_dir):
+        if not os.path.isdir(patient_dir) or (patient_id not in data):
             continue
 
         # collect list of available studies
@@ -105,8 +111,8 @@ def generate_settings(
     return archive_list
 
 
-def CroppingVolumes(annotations_dir,archive_dir,output_dir,archive_list):
 
+def CroppingVolumes(annotations_dir,archive_dir,output_dir,archive_list,option=1):
     for scan_patient in archive_list:
         mask = sitk.ReadImage(os.path.join(annotations_dir,scan_patient['annotation_path']))
         T2W=sitk.ReadImage(os.path.join(archive_dir,scan_patient['scan_paths'][0]))
@@ -153,19 +159,33 @@ def CroppingVolumes(annotations_dir,archive_dir,output_dir,archive_list):
         ADC=ADC[xstart-30:(xsize+xstart+30),ystart-30:(ysize+ystart+30),zstart-2:(zsize+zstart+2)]
         HBV=HBV[xstart-30:(xsize+xstart+30),ystart-30:(ysize+ystart+30),zstart-2:(zsize+zstart+2)]
 
-        # save image
-        os.makedirs(Path(os.path.join(output_dir,'images',scan_patient['scan_paths'][0])).parent, exist_ok=True) 
-        writer0 = sitk.ImageFileWriter()
-        writer0.SetFileName(os.path.join(output_dir,'images',scan_patient['scan_paths'][0]))
-        writer0.Execute(T2W)
+        if option==1:
+            # save image using mha format and similar to picai
+            os.makedirs(Path(os.path.join(output_dir,'images',scan_patient['scan_paths'][0])).parent, exist_ok=True) 
+            writer0 = sitk.ImageFileWriter()
+            writer0.SetFileName(os.path.join(output_dir,'images',scan_patient['scan_paths'][0]))
+            writer0.Execute(T2W)
 
-        writer1 = sitk.ImageFileWriter()
-        writer1.SetFileName(os.path.join(output_dir,'images',scan_patient['scan_paths'][1]))
-        writer1.Execute(ADC)
+            writer1 = sitk.ImageFileWriter()
+            writer1.SetFileName(os.path.join(output_dir,'images',scan_patient['scan_paths'][1]))
+            writer1.Execute(ADC)
 
-        writer2 = sitk.ImageFileWriter()
-        writer2.SetFileName(os.path.join(output_dir,'images',scan_patient['scan_paths'][2]))
-        writer2.Execute(HBV)
+            writer2 = sitk.ImageFileWriter()
+            writer2.SetFileName(os.path.join(output_dir,'images',scan_patient['scan_paths'][2]))
+            writer2.Execute(HBV)
+        else: # save image in nii.gz format
+            os.makedirs(Path(os.path.join(output_dir,'images')), exist_ok=True)
+            writer0 = sitk.ImageFileWriter()
+            writer0.SetFileName(os.path.join(output_dir,'images',scan_patient['annotation_path'].split('.')[0]+'_0000.nii.gz'))
+            writer0.Execute(T2W)
+
+            writer1 = sitk.ImageFileWriter()
+            writer1.SetFileName(os.path.join(output_dir,'images',scan_patient['annotation_path'].split('.')[0]+'_0001.nii.gz'))
+            writer1.Execute(ADC)
+
+            writer2 = sitk.ImageFileWriter()
+            writer2.SetFileName(os.path.join(output_dir,'images',scan_patient['annotation_path'].split('.')[0]+'_0002.nii.gz'))
+            writer2.Execute(HBV)
 
         print('\nAfter cropping scan:')
         print('origin: ' + str(T2W.GetOrigin()))
@@ -185,10 +205,11 @@ if __name__ == "__main__":
 
     # paths
     annotations_dir = Path("/home/gustavo/Data/dataset/picai/picai_labels/anatomical_delineations/whole_gland/AI/Bosma22b")
-    output_json =Path("/home/gustavo/Data/dataset/picai/Cropped/datalist.json")
+    output_json =Path("/home/gustavo/Data/dataset/picai/dataset_test/picai_test/datalist.json")
     archive_dir = Path('/home/gustavo/Data/dataset/picai/images')
-    output_dir = Path('/home/gustavo/Data/dataset/picai/Cropped')
+    output_dir = Path('/home/gustavo/Data/dataset/picai/dataset_test/picai_test')
+    filesToCrop= '/home/gustavo/Code/Git_workspace/MIAM/nnUNet/data/nnUnet_raw/nnUNet_raw_data/Task2201_picai/TestSet.json'
 
-    archive_list=generate_settings(archive_dir,output_json,annotations_dir)
-    CroppingVolumes(annotations_dir,archive_dir,output_dir,archive_list)
+    archive_list=generate_settings(archive_dir,output_json,annotations_dir,filesToCrop=filesToCrop)
+    CroppingVolumes(annotations_dir,archive_dir,output_dir,archive_list,option=1)
     

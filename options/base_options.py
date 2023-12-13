@@ -41,7 +41,6 @@ class BaseOptions():
 
         # models
         self.parser.add_argument('--encoder', type=str, default='MCNN_h+VIT_n',help='chooses encoder to use CNN_h+VIT_n, CNN_l+VIT_n,MCNN_{h,l}+VIT_{n,s,m}')        
-
         self.initialized = True
         
         #nnUnet setting
@@ -49,6 +48,10 @@ class BaseOptions():
         self.parser.add_argument('--fold', type=int, default=0, help='choose number of fold used to train data')
         self.parser.add_argument('--n_splits', type=int, default=5, help='Number of splits for the cross-validation')
 
+        # Test setting
+        self.parser.add_argument('--sigmoid', dest='sigmoid',action='store_true', default=False, help='helping bool to change the default post processing setup for testing')  
+        self.parser.add_argument('--postprocessing', type=str, default="None",help='option for postprocessing data') 
+            
     def str2None(self,v):
         """
         Converts string to None type; enables command line 
@@ -119,12 +122,11 @@ class BaseOptions():
         if self.opt.imageSize==0:
             self.opt.imageSize=CurrentPlan['plans_per_stage'][self.opt.stage]['patch_size'].tolist()
             self.opt.filters_Encoder=features[:len(self.opt.conv_kernel_sizes)]
-        else:# tengo que cambiarlo para que dependa del imageSize y que tenga un valor minimo de 8,8,8 (autoconfigurable para los modelos basados
-            #en transformers) usar un downsampling menos del propuesto por nnunet
-            self.opt.num_pool_per_axis=[2,5,5]
-            self.opt.pool_op_kernel_sizes=[[1,1,1],[1, 2, 2], [2, 2, 2], [2, 2, 2], [1, 2, 2], [1, 2, 2]]
-            self.opt.conv_kernel_sizes=[[1, 3, 3], [1, 3, 3], [3, 3, 3], [3, 3, 3],[3, 3, 3],[3, 3, 3]]
-            self.opt.filters_Encoder=features[:len(self.opt.conv_kernel_sizes)]
+        else:# configuracion for TransBTS
+            self.opt.num_pool_per_axis=[4,4,4,4]#[2,5,5]
+            self.opt.pool_op_kernel_sizes=[[1,1,1],[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2],[2, 2, 2]] #[[1,1,1],[1, 2, 2], [2, 2, 2], [2, 2, 2], [1, 2, 2], [1, 2, 2]]
+            self.opt.conv_kernel_sizes=[[3, 3, 3], [3, 3, 3], [3, 3, 3],[3, 3, 3],[3, 3, 3],[3, 3, 3]]#[[1, 3, 3], [1, 3, 3], [3, 3, 3], [3, 3, 3],[3, 3, 3],[3, 3, 3]]
+            self.opt.filters_Encoder=(16,32,64,128,256,320)#features[:len(self.opt.conv_kernel_sizes)]
 
         if self.opt.batchSize==0:#use batchsize nnunet
             self.opt.batchSize=CurrentPlan['plans_per_stage'][self.opt.stage]['batch_size']
@@ -150,7 +152,7 @@ class BaseOptions():
         if self.opt.region[0]!='None' and self.opt.dataroot!='Task001_BraTS2021':
             self.opt.region=tuple([tuple([int(i) for i in x.split(',')]) if len(x)>1 else (int(x),) for x in self.opt.region])
 
-        self.opt.lambda_Loss=[float(x) for x in self.opt.lambda_Loss[0].split(' ')]
+        self.opt.lambda_Loss=[float(x) for x in self.opt.lambda_Loss.split(' ')]
        
         ### set checkpoint and output folder
         if self.opt.checkpoints_dir is not None:

@@ -9,6 +9,8 @@ import pathlib
 from medutils.medutils import load_itk, get_gdth_pred_names, one_hot_encode_3d
 #import logging
 from tqdm import tqdm
+from MetricsReloaded.metrics.pairwise_measures import BinaryPairwiseMeasures as BPM
+from MetricsReloaded.metrics.prob_pairwise_measures import ProbabilityPairwiseMeasures as PPM
 
 __all__ = ["write_metrics"]
 
@@ -91,13 +93,41 @@ def computeQualityMeasures(lP: np.ndarray,
         dicecomputer = sitk.LabelOverlapMeasuresImageFilter()
         dicecomputer.Execute(labelTrue > 0.5, labelPred > 0.5)
 
+        bpm = BPM(pred, gdth)
+        #dictbpm_seg = bpm.to_dict_meas()
+
         if gdth_sum==0 and pred_sum==0:
             dice=1
             jaccard=1
             precision=1
             recall=1
-
-
+            vs=1
+            #assd=0
+            #masd=0
+            nsd=1
+            iou=1
+            ba=1
+            barycentre=0
+        elif gdth_sum==0 and pred_sum!=0:
+            dice=0
+            jaccard=0
+            precision=0
+            recall=0
+            vs=0
+            #assd='Inf'
+            #masd='Inf'
+            nsd=0
+            iou=0
+            ba=0
+            barycentre=-1
+        else:
+            vs=dicecomputer.GetVolumeSimilarity()
+            #assd=bpm.measured_average_distance()
+            #masd=bpm.measured_masd()
+            nsd=bpm.normalised_surface_distance()
+            iou=bpm.intersection_over_union()
+            ba=bpm.balanced_accuracy()
+            barycentre=bpm.com_dist()
 
         quality["dice"] = dice
         quality["jaccard"] = jaccard
@@ -105,12 +135,19 @@ def computeQualityMeasures(lP: np.ndarray,
         quality["recall"] = recall
         quality["fnr"] = fnr
         quality["fpr"] = fpr
-        quality["vs"] = dicecomputer.GetVolumeSimilarity()
+        quality["vs"] = vs
 
         quality["TP"] = tp
         quality["TN"] = tn
         quality["FP"] = fp
         quality["FN"] = fn
+
+        #quality["assd"] = assd
+        #quality["masd"] = masd
+        quality["nsd"] = nsd
+        quality["iou"] = iou
+        quality["ba"] = ba
+        quality["barycentre"] = barycentre
 
     if set(distance_metrics).intersection(metrics_names) or not metrics_names:
         # Surface distance measures
@@ -203,6 +240,13 @@ def get_metrics_dict_all_labels(labels: Sequence,
     TN_list = []
     FP_list = []
     FN_list = []
+    #taken from metrics reload
+    assd_list=[]
+    masd_list=[]
+    nsd_list=[]
+    iou_list=[]
+    ba_list=[]
+    barycentre_list=[]
 
     label_list = [lb for lb in labels]
 
@@ -219,7 +263,12 @@ def get_metrics_dict_all_labels(labels: Sequence,
                                'mdsd': mdsd_list,
                                'stdsd': stdsd_list,
                                'hd95': hd95_list,
-
+                               'assd': assd_list,
+                                'masd': masd_list,
+                                 'nsd': nsd_list,
+                                 'iou': iou_list,
+                                 'ba': ba_list,
+                                'barycentre':barycentre_list,
                                'TP':TP_list,
                                'TN':TN_list,
                                'FP':FP_list,
@@ -320,7 +369,7 @@ def write_metrics(labels: Sequence,
                 pred = one_hot_encode_3d(pred, labels=labels)
                 metrics_dict_all_labels = get_metrics_dict_all_labels(labels, gdth, pred, spacing=gdth_spacing[::-1],
                                                                       metrics_names=metrics, fullyConnected=fully_connected)
-                metrics_dict_all_labels['filename'] = pred_name  # add a new key to the metrics
+                metrics_dict_all_labels['filename'] = pred_name.split('/')[-1]  # add a new key to the metrics
 
                 if csv_file:
                     data_frame = pd.DataFrame(metrics_dict_all_labels)
@@ -369,6 +418,7 @@ def write_metrics(labels: Sequence,
 
                 gdth = one_hot_encode_3d(gdth, labels=labels)
                 pred = one_hot_encode_3d(pred, labels=labels)
+                print('Creation of dictionary of new metrics using metrics reload library')
                 metrics_dict_all_labels = get_metrics_dict_all_labels(labels, gdth, pred, spacing=gdth_spacing[::-1],
                                                                       metrics_names=metrics, fullyConnected=fully_connected)
                 # metrics_dict_all_labels['image_number'] = img_id  # add a new key to the metrics

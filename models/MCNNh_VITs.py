@@ -20,7 +20,7 @@ from torch.nn import init
 from util.util import print_network
 from util.block import FusedGatedUnit
 from .encoder import BasicUnetEnc
-from .decoder import CNN_VIT_decoder
+from .decoder import MCNN_VIT_decoder
 import einops
 
   
@@ -115,7 +115,7 @@ class MultiCNNHeavy_VITsingle(nn.Module):
             in_channels=filters_Encoder[-1],
             img_size=img_size,
             patch_size=self.patch_size,
-            hidden_size=hidden_size*self.numModal,
+            hidden_size=hidden_size,
             mlp_dim=mlp_dim,
             pos_embed=pos_embed,
             num_layers=self.num_layers,
@@ -126,15 +126,15 @@ class MultiCNNHeavy_VITsingle(nn.Module):
             fusion=self.opt.Earlyfusion
         )
         """ ------------------------------------------------------------- """  
-        self.ProjShared=FusedGatedUnit(hidden_size*self.numModal,
-               hidden_size*self.numModal)
+        self.ProjShared=FusedGatedUnit(hidden_size,
+               hidden_size)
         
         
         """ -------------------CNN decoders------------------------------- """
         from copy import deepcopy
         filters_EncVit=list(deepcopy(filters_Encoder))[:-1]
         filters_EncVit.append(hidden_size)
-        self.decoder=CNN_VIT_decoder(
+        self.decoder=MCNN_VIT_decoder(
                    spatial_dims=spatial_dims,
                    num_modality=in_channels,
                    features=tuple(filters_EncVit),
@@ -186,7 +186,7 @@ class MultiCNNHeavy_VITsingle(nn.Module):
         outViT, _ = self.vit(skip)
         outViT = einops.rearrange(outViT, "b (Np n) H -> b n Np H",n=numnoda)
         outViT=self.ProjShared(outViT)
-        outViT=self.proj_feat(outViT, self.hidden_size*self.numModal, self.feat_size)
+        outViT=self.proj_feat(outViT, self.hidden_size, self.feat_size)
 
         output=self.decoder(outViT,skip_connections)
         
@@ -251,7 +251,7 @@ class MultiCNNHeavy_VITsingle(nn.Module):
             model = model.to(self.opt.device)
         print_network(model)
         """---------------------"""
-        #self.init_weights(model, init_type, init_gain=init_gain)
+        self.init_weights(model, init_type, init_gain=init_gain)
         return model
     """--------------------------------------------------------------------""" 
 

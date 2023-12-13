@@ -12,6 +12,7 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--seed', type=int, default=12345, help='# of seed for deterministic training')
         self.parser.add_argument('--region', nargs='+', default=((1,4),(1,4,2),(4,)), help='segmentation regions to merge, default Brats')
         self.parser.add_argument('--spatial_dims', type=int, default=3, help='The network will be 2D or 3D')
+        self.parser.add_argument('--oversample_foreground_percent', type=float, default=0.66, help='sampling strategy .66 fg rest uniform, for nnUNet set to 0.33')
 
      # transformers setting   
         self.parser.add_argument('--patchSize', type=int, default=1, help='number of the patch for transformer network')
@@ -40,10 +41,10 @@ class TrainOptions(BaseOptions):
                         help='Optimizer Betas (default: None, use opt default)')
         self.parser.add_argument('--clip_grad', type=float, default=None, metavar='NORM',
                         help='Clip gradient norm (default: None, no clipping)')
-        self.parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
-                        help='SGD momentum (default: 0.9)')
-        self.parser.add_argument('--weight_decay', type=float, default=0.05,
-                        help='weight decay (default: 0.05)')
+        self.parser.add_argument('--momentum', type=float, default=0.99, metavar='M',
+                        help='SGD momentum (default: 0.99)')
+        self.parser.add_argument('--weight_decay', type=float, default=1e-5,
+                        help='weight decay (default: 1e-5)')
         self.parser.add_argument('--amsgrad', dest='amsgrad',action='store_true', default=False,help='amsgrad (default: False)')
         self.parser.add_argument('--weight_decay_end', type=float, default=None, help="""Final value of the
         weight decay. We use a cosine schedule for WD and using a larger decay by
@@ -125,7 +126,7 @@ class TrainOptions(BaseOptions):
 
 ####################OPTION FOR LOSS function###################################""""
         self.parser.add_argument('--loss_option', type=str, default="DiceFocalLoss", help='choose loss function')        
-        self.parser.add_argument('--lambda_Loss', nargs='+', default=[1,1], help='lambda for compose loss, vector represented the weight of the loss')
+        self.parser.add_argument('--lambda_Loss', type=str, default=['1 1'], help='lambda for compose loss, vector represented the weight of the loss')
 
 ####################OPTION AVAILABLE only with config contrastive###################################""""        
         self.parser.add_argument('--lambdaCNN', type=float, default=1e-1, help='lambda contrastive CNN')

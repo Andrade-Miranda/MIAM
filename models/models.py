@@ -4,7 +4,7 @@ def create_model(opt):
                    'VIT_n','VIT_s','VIT_m','SegResNetVAE','SegResNet','UNETR','SwinTrans3DSimple','SwinTrans3D','nnFormer',
                    'SCNN_h+VIT_n','MCNN_l+VIT_n','SCNN_h+VIT_s','SCNN_h+VIT_m','Transfuse','Swinfuse','MCNN_h+VIT_n-CL','SCNN_h+VIT_n-CL',
                    'VIT_s-T1T2','VIT_m-T1T2','MCNN_h+VIT_n-T1T2','MCNN_h+VIT_s-T1T2','MCNN_h+VIT_m-T1T2', 'MCNN_h','ConVnext-UNet','MCNN_h+VIT-backbone',
-                   'MCNN_h+VIT_cv','VIT_m0']
+                   'MCNN_h+VIT_cv','VIT_m0','MedNeXt','nnUNetPlain']
         
     assert any(opt.encoder==name for name in encoderOption)
     if opt.encoder=='CNN_h+VIT_n':#si
@@ -96,6 +96,9 @@ def create_model(opt):
     elif opt.encoder=='SwinTrans3DSimple':#no
         from .SwinTrans3DS import SwinTransformer3DSimple  
         model = SwinTransformer3DSimple(opt) 
+    elif opt.encoder=='MedNeXt':#no
+        from .mednextv1.create_mednext_v1 import create_mednextv1_base  
+        model = create_mednextv1_base(opt,num_input_channels=opt.input_nc, num_classes=opt.output_nc) 
         ################SOTA CNN######################
     elif opt.encoder=='Unet':#si
         from .netMisc import UnetMonai
@@ -103,6 +106,9 @@ def create_model(opt):
     elif opt.encoder=='MCNN_h':#si
         from .MCNNh import MultiCNNHeavy
         model = MultiCNNHeavy(opt)
+    elif opt.encoder=='nnUNetPlain':#si
+        from .nnUNet import nnUNetPlain
+        model = nnUNetPlain(opt)
     elif opt.encoder=='ConVnext-UNet':#si
         from .ConvNeXt_Unet import ConvNeXt_Unet
         model = ConvNeXt_Unet(opt)

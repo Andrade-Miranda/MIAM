@@ -11,8 +11,8 @@
 #    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
-from nnunet.training.loss_functions.crossentropy import RobustCrossEntropyLoss
-from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
+from nnUNet.nnunet.training.loss_functions.crossentropy import RobustCrossEntropyLoss
+from nnUNet.nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
 
 
 class nnUNetTrainerV2_Loss_CE(nnUNetTrainerV2):

@@ -33,7 +33,8 @@ from batchgenerators.utilities.file_and_folder_operations import join,maybe_mkdi
 from util.testing_setup import save_segmentation_nifti_from_softmax,save_segmentation_nifti_softmax
 from picai_eval import evaluate_folder
 from util import seg_metrics as sg
-#from picai_baseline.splits.picai_nnunet import valid_splits
+from util.visualizer import Picai_ResultsPlots
+from help_fnct.UncertainSmallEmpty.evaluator import evaluate_folders
 
 
 from monai.data import (
@@ -43,9 +44,6 @@ from monai.transforms import (
     Compose,
     Activations
 )
-post_trans = Compose(
-                [Activations(sigmoid=True)]
-            )
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,trainConfig,
@@ -394,8 +392,8 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
     Config.Config.dice_metricVal.reset()
 
     # store model checkpoint if validation metric improves
-    if (valid_metrics.score+DSC_val)/2 > tracking_metrics['best_metric']:#valid_metrics.score
-        tracking_metrics['best_metric'] = (valid_metrics.score+(DSC_val))/2#val_dice[-1]#valid_metrics.score#val_dice/step #valid_metrics.score
+    if valid_metrics.score >(valid_metrics.score+DSC_val)/2:#valid_metrics.score > tracking_metrics['best_metric']:
+        tracking_metrics['best_metric'] = (valid_metrics.score+(DSC_val))/2 #val_dice[-1]#valid_metrics.score#val_dice/step #valid_metrics.score
         tracking_metrics['best_metric_epoch'] = epoch + 1
         
         weights_file = Path(args.expr_dir) / "BestCHK.pth"
@@ -431,8 +429,8 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
     opt.dataset_mode = 'test'
 
     #######################################
-    output_folder = join('./nnUNet/data/nnUnet_raw/results','predictions',opt.dataroot,opt.encoder,opt.name)
-    output_folder_softmax = join('./nnUNet/data/nnUnet_raw/results','Softmax',opt.dataroot,opt.encoder,opt.name)
+    output_folder = join('./Output/',opt.dataroot,opt.encoder,opt.name,'predictions')
+    output_folder_softmax = join('./Output/',opt.dataroot,opt.encoder,opt.name,'Softmax')
     opt.input_folder= join("./nnUNet/data/nnUnet_raw/nnUNet_raw_data",opt.dataroot,"labelsTr")
     y_true_dir=Path("./nnUNet/data/nnUnet_raw/nnUNet_raw_data") / Path(opt.dataroot) / "labelsTr"
     with open(Path("./nnUNet/data/nnUnet_raw/results/overviews/"+opt.dataroot) / f'PI-CAI_val-fold-{opt.fold}.json') as fp:
@@ -442,15 +440,36 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
     maybe_mkdir_p(output_folder_softmax)
     ######################################
     
+    #####Load best checkpoint#########
+    checkpoint = torch.load(join(opt.expr_dir,"BestCHK.pth"),map_location=opt.device)
+    if 'model_state_dict' in checkpoint:
+        model.load_state_dict(
+            checkpoint['model_state_dict'],strict=False)
+    else:
+        model.load_state_dict(
+            checkpoint,strict=False)
+    print("Replace last weights .... LOAD TRAINED BestCHK WEIGHTS")
+
     testConfig=TrainSetup(opt,model)
     patientsID=[]
     model.eval()
     step=1
-    # 🐝 create a wandb table to log input image, ground_truth masks and predictions
-    columns = ["filename", "image", "ground_truth", "prediction"]
-    tableSeg = wandb.Table(columns=columns)
+
 
     with torch.no_grad():#Context-manager that disabled gradient calculation.
+
+        if not opt.sigmoid:
+            post_trans = Compose(
+                [Activations(softmax=True)]#[Activations(sigmoid=True)]
+            )
+        else:
+            post_trans = Compose(
+                [Activations(sigmoid=True)]
+            )
+
+        opt.outputSoft_dir=output_folder_softmax # only to specify output directory
+        createPlots=Picai_ResultsPlots(opt,opt.wandb_logger)
+
         for preprocessed in test_loader:
 
             val_inputs = preprocessed["image"].to(opt.device, non_blocking=True)
@@ -468,7 +487,7 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
             save_segmentation_nifti_from_softmax(val_outputs_seg.detach().cpu(), outputpath,
                                          dct, order=1,
                                          region_class_order= None,
-                                         seg_postprogess_fn= None, seg_postprocess_args= None,
+                                         seg_postprogess_fn= None,seg_postprocess_args=None,#testConfig.Config.postprocessing, seg_postprocess_args= {out_fname},
                                          resampled_npz_fname= None,
                                          non_postprocessed_fname= None, force_separate_z= None,
                                          interpolation_order_z= 0, verbose= True,isbrats=False)
@@ -478,7 +497,7 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
             save_segmentation_nifti_softmax(val_outputsSoftmax.detach().cpu(), outputpath_softmax,
                                          dct, order=1,
                                          region_class_order= None,
-                                         seg_postprogess_fn= None, seg_postprocess_args= None,
+                                         seg_postprogess_fn=None,seg_postprocess_args=None, #testConfig.Config.postprocessing, seg_postprocess_args= {out_fname},
                                          resampled_npz_fname= None,
                                          non_postprocessed_fname= None, force_separate_z= None,
                                          interpolation_order_z= 0, verbose= True,isbrats=False)
@@ -496,29 +515,19 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
     metricspercase = sg.write_metrics(labels=labels[1:],
                   gdth_path=join("./nnUNet/data/nnUnet_raw/nnUNet_raw_data",opt.dataroot,"labelsTr"),
                   pred_path=output_folder,
-                  metrics = ['dice','msd', 'mdsd'],
+                  metrics=['dice','vs', 'hd95','msd','mdsd','nsd','ba','barycentre'],
                   csv_file=output_folder+'/'+"training_metrics.csv")
+    ####evaluation using USE evaluator########################""""""""""""""
+    #evaluate_folders(
+    #    folder_with_gts="/home/gustavo/Data/dataset/picai/dataset_test/val/valF0_label",#join("./nnUNet/data/nnUnet_raw/nnUNet_raw_data",opt.dataroot,"labelsTr"),
+    #    folder_with_predictions=output_folder,
+    #    th=1,
+    #    labels=(0,1),
+    #    name='Use_evaluator')
+    #######################################################
     
-    # 🐝
-    if  opt.enable_wandb:
-        # Create a table with the columns to plot
-        all_valid_keys=[metricspercase[i]['filename'].split('/')[-1].split('.')[0] for i in range(len(metricspercase))]
-        val_dice=[metricspercase[i]['dice'][0] for i in range(len(metricspercase))]
-        id=list(range(len(metricspercase)))
-        data = [[case,x, y] for (case,x,y) in zip(all_valid_keys,id,val_dice)]
-        table = wandb.Table(data=data, columns = ["CasesID","ID","DSC"])
-        wandb.log({"ValScatter/plot" : wandb.plot.scatter(table, "ID", "DSC",
-                                 title="Val cases vs DSC Scatter Plot")})
-        
-        data = [[case,y] for (case,y) in zip(all_valid_keys,val_dice)]
-        table = wandb.Table(data=data, columns = ["CasesID","DSC"])
-        wandb.log({"ValBar/plot" : wandb.plot.bar(table, "CasesID", "DSC",
-                                 title="Val cases vs DSC bar"),
-                     "Test prediction" :tableSeg})
-
-
-
-    metrics = evaluate_folder(y_det_dir=Path(output_folder_softmax),
+    print("Evaluate segmentation and/or classification performance",flush=True)
+    clasif_metrics = evaluate_folder(y_det_dir=Path(output_folder_softmax),
                               y_true_dir=y_true_dir,
                               subject_list=subject_list,
                               y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0],
@@ -526,31 +535,12 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
                               label_postfixes=[""],num_parallel_calls=2
                             )
 
-    
-    # 🐝
-    if  opt.enable_wandb:
-        opt.wandb_logger.log({
-                "rocTest" : wandb.plot.roc_curve([metrics.case_target[s] for s in metrics.subject_list],
-                                                        [[1-metrics.case_pred[s],metrics.case_pred[s]] for s in metrics.subject_list],
-                                                        title='ROC Test',classes_to_plot=1),
-                "prTest":wandb.plot.pr_curve([metrics.case_target[s] for s in metrics.subject_list], 
-                                                   [[1-metrics.case_pred[s],metrics.case_pred[s]] for s in metrics.subject_list],
-                                                   title='Precision vs Recall Test',classes_to_plot=1),
-                "Confusion Matrix Test WB":wandb.plot.confusion_matrix(
-                                         y_true=[metrics.case_target[s] for s in metrics.subject_list],
-                                        preds=[np.argmax([1-metrics.case_pred[s],metrics.case_pred[s]]) for s in metrics.subject_list],     
-                                        class_names=['Benign','Malign']),
-                "Confusion Matrix": wandb.sklearn.plot_confusion_matrix(y_true=[metrics.case_target[s] for s in metrics.subject_list],
-                                                                                 y_pred=[np.argmax([1-metrics.case_pred[s],metrics.case_pred[s]]) for s in metrics.subject_list], 
-                                                                                 labels=['Benign','Malign'])
-                                        }) 
 
-    metrics.save(Path(output_folder) / "metrics-val.json")
+    clasif_metrics.save(Path(output_folder_softmax) / "metrics-val.json")
     print(f"Evaluation of training performance finished for fold {opt.fold}.")
-
-    print(f"Valid. Performance [Benign or Indolent PCa vs. csPCa]:\nRanking Score = {metrics.score:.3f},\
-        AP = {metrics.AP:.3f}, AUROC = {metrics.auroc:.3f}", flush=True)
-
+    print(f"Valid. Performance [Benign or Indolent PCa vs. csPCa]:\nRanking Score = {clasif_metrics.score:.3f},\
+        AP = {clasif_metrics.AP:.3f}, AUROC = {clasif_metrics.auroc:.3f}", flush=True)
+    createPlots.Plot_curves(clasif_metrics,metricspercase)
 
 
 def Prostate_Tumor_Augmentation(valid_images,testConfig):

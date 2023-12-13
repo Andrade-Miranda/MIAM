@@ -20,6 +20,10 @@ from typing import Any, Dict, Hashable, List, Optional, Tuple, Union
 
 import numpy as np
 from sklearn.metrics import auc, precision_recall_curve, roc_curve
+import torch
+from scipy.stats import t
+import scipy.stats as st
+
 
 try:
     import numpy.typing as npt
@@ -36,11 +40,13 @@ class Metrics:
     case_pred: Optional[Dict[Hashable, float]] = None
     case_weight: Optional[Union[Dict[Hashable, float], List[float]]] = None
     lesion_weight: Optional[Dict[Hashable, List[float]]] = None
+    bootstrap: bool = False
     thresholds: "Optional[npt.NDArray[np.float64]]" = None
     subject_list: Optional[List[str]] = None
     sort: bool = True
 
     def __post_init__(self):
+        
         if isinstance(self.lesion_results, (str, Path)):
             # load metrics from file
             self.load(self.lesion_results)
@@ -73,6 +79,14 @@ class Metrics:
             subject_list = sorted(list(self.lesion_results))
             self.lesion_weight = {idx: [1]*len(case_y_list) for idx, case_y_list in self.lesion_results.items()}
 
+        if self.bootstrap:
+            self.bootstrap_list=[]
+            if self.sort:
+                self.reps = 1000
+                for i in range(self.reps):
+                    bootstrap_list = list(np.random.choice(self.subject_list, len(self.case_pred), replace=True))
+                    bootstrap_list = sorted(bootstrap_list)
+                    self.bootstrap_list.append(bootstrap_list)
         if self.sort:
             # sort dictionaries
             subject_list = sorted(list(self.lesion_results))
@@ -86,11 +100,20 @@ class Metrics:
     def calc_auroc(self, subject_list: Optional[List[str]] = None) -> float:
         """Calculate case-level Area Under the Receiver Operating Characteristic curve (AUROC)"""
         return self.calculate_ROC(subject_list=subject_list)['AUROC']
+    
+    def calc_aufroc(self, subject_list: Optional[List[str]] = None) -> float:
+        """Calculate case-level Area Under the Receiver Operating Characteristic curve (AUROC)"""
+        return self.calculate_ROC(subject_list=subject_list)['AUFROC']
 
     @property
     def auroc(self) -> float:
         """Calculate case-level Area Under the Receiver Operating Characteristic curve (AUROC)"""
         return self.calc_auroc()
+
+    @property
+    def aufroc(self) -> float:
+        """Calculate case-level Area Under the Receiver Operating Characteristic curve (AUROC)"""
+        return self.calc_aufroc()
 
     def calc_AP(self, subject_list: Optional[List[str]] = None) -> float:
         """Calculate Average Precision"""
@@ -304,16 +327,161 @@ class Metrics:
         auroc = auc(fpr, tpr)
         J=tpr-fpr
         idx=np.argmax(J)
+        ###froc###
+        TP=self.calculate_counts(subject_list=subject_list)['TP']
+        FP=self.calculate_counts(subject_list=subject_list)['FP']
+        num_lesions=sum([is_lesion for is_lesion, *_ in self.get_lesion_results_flat(subject_list=subject_list)])
+        sensitivity = TP[:-1] / num_lesions
+        fp_per_case = FP[:-1] / self.num_cases
+        froc=auc(fp_per_case, sensitivity)
         return {
             'FPR': fpr,
             'TPR': tpr,
+            'AUFROC':froc,
             'AUROC': auroc,
             'Best_THR': threshold[idx]
         }
 
+    def prediction_rejection_ratio(self,subject_list: Optional[List[str]] = None, metric='prob', norm_logits=False,level='image'):
+         # Based on https://github.com/KaosEngineer/PriorNetworks/blob/master/prior_networks/assessment/rejection.py
+        # compute area between base_error(1-x) and the rejection curve
+        # compute area between base_error(1-x) and the oracle curve
+        # take the ratio
+        # Filter out background class
+        #logits = logits[labels != 0, :]
+        #labels = labels[labels != 0]
+        if level=='image':
+            labels=torch.tensor([self.case_target[s] for s in subject_list])
+            logits_tumor=[self.case_pred[s]  for s in subject_list]
+            logits_notumor=[1-self.case_pred[s]  for s in subject_list]            
+        else:# lesion level
+            labels=torch.tensor([truelabel[0] for truelabel in self.get_lesion_results_flat(subject_list=subject_list)])
+            logits_tumor=[truelabel[1] for truelabel in self.get_lesion_results_flat(subject_list=subject_list)]
+            logits_notumor=[1-truelabel[1] for truelabel in self.get_lesion_results_flat(subject_list=subject_list)]
+        logits=torch.tensor(np.concatenate((np.array(logits_notumor)[:,None],np.array(logits_tumor)[:,None]),axis=1))
+
+         # Get class probabilities
+        probs = logits # For maskformer we compute probs directly
+     
+        if metric == 'prob':
+             confidence, preds = torch.max(probs, dim=1) # Take as confidence the probability of the predicted class
+        elif metric == 'entropy':
+            probs = probs + 1e-16
+            confidence = torch.sum((torch.log(probs) * probs), axis=1) # Negative entropy
+            preds = torch.argmax(probs, dim=1)
+
+         # the rejection plots needs to reject to the right the most uncertain/less confident samples
+         # if uncertainty metric, high means reject, sort in ascending uncertainty;
+        # if confidence metric, low means reject, sort in descending confidence
+        sorted_idx = torch.argsort(confidence, descending = True)
+
+        # reverse cumulative errors function (rev = from all to first, instead from first error to all)
+        rev_cum_errors = []
+        # fraction of data rejected, to compute a certain value of rev_cum_errors
+        fraction_data = []
+
+        num_samples = preds.shape[0]
+     
+        errors = (labels[sorted_idx] != preds[sorted_idx]).float().numpy()
+        rev_cum_errors = np.cumsum(errors) / num_samples
+        fraction_data = np.array([float(i + 1) / float(num_samples) * 100.0 for i in range(num_samples)])
+     
+        base_error = rev_cum_errors[-1] # error when all data is taken into account
+
+        # area under the rejection curve (used later to compute area between random and rejection curve)
+        auc_uns = 1.0 - auc(fraction_data / 100.0, rev_cum_errors[::-1] / 100.0)
+
+        # random rejection baseline, it's 1 - x line "scaled" and "shifted" to pass through base error and go to 100% rejection
+        random_rejection = np.asarray(
+                 [base_error * (1.0 - float(i) / float(num_samples)) for i in range(num_samples)],
+                 dtype=np.float32)
+        # area under random rejection, should be 0.5
+        auc_rnd = 1.0 - auc(fraction_data / 100.0, random_rejection / 100.0)
+
+        # oracle curve, the oracle is assumed to commit the base error
+        # making the oracle curve commit the base error allows to remove the impact of the base error when computing
+        # the ratio of areas
+        # line passing through base error at perc_rej = 0, and crossing
+        # the line goes from x=0 to x=base_error/100*num_samples <- this is when the line intersects the x axis
+        # which means the oracle ONLY REJECTS THE SAMPLES THAT ARE MISCASSIFIED
+        # afterwards the function is set to zero
+        orc_rejection = np.asarray(
+                 [base_error * (1.0 - float(i) / float(base_error / 100.0 * num_samples)) for i in
+                  range(int(base_error / 100.0 * num_samples))], dtype=np.float32)
+        orc = np.zeros_like(rev_cum_errors)
+        orc[0:orc_rejection.shape[0]] = orc_rejection
+        auc_orc = 1.0 - auc(fraction_data / 100.0, orc / 100.0)
+         
+        # reported from -100 to 100
+        rejection_ratio = (auc_uns - auc_rnd) / (auc_orc - auc_rnd) * 100.0
+
+        return rejection_ratio
+    
+    def DiceLesion(self,subject_list: Optional[List[str]] = None):
+        data=[lesions[2] for lesions in self.get_lesion_results_flat(subject_list=subject_list) if lesions[2]>0]
+
+        # Mean and standard error of the mean
+        mean_value = np.mean(data)
+
+        return {'mean':mean_value}
+    
+    def compute_confidenceInterval(self,data,confidence_level=0.95):
+        # Confidence level (e.g., 95% confidence interval)
+        confidence_level = confidence_level
+        # Degrees of freedom (N - 1 for a sample, N for a population)
+        degrees_of_freedom = len(data) - 1
+        # Mean and standard error of the mean
+        mean_value = np.mean(data)
+        std_error = st.sem(data)
+        # Compute the confidence interval
+        confidence_interval = t.interval(confidence_level, degrees_of_freedom, loc=mean_value, scale=std_error)
+
+        return {"mean":mean_value,"CI":confidence_interval,"std":std_error}
+    
+    def computeFROC_bootstrap(self, confidence = 0.95):
+    
+        fps_lists = []
+        sens_lists = []
+        thresholds_lists = []
+        sens_mean,sens_lb,sens_up=[],[],[]
+        # plot settings
+        self.FROC_minX = 0.125 # Mininum value of x-axis of FROC curve
+        self.FROC_maxX = 8 # Maximum value of x-axis of FROC curve
+        numberOfBootstrapSamples=len(self.bootstrap_list)
+        for i in range(numberOfBootstrapSamples):
+            print ('computing FROC: bootstrap %d/%d' % (i,numberOfBootstrapSamples))
+            ###froc###
+            TP=self.calculate_counts(subject_list=self.bootstrap_list[i])['TP']
+            FP=self.calculate_counts(subject_list=self.bootstrap_list[i])['FP']
+            sens = TP / sum([is_lesion for is_lesion, *_ in self.get_lesion_results_flat(subject_list=self.bootstrap_list[i])])
+            fps = FP / self.num_cases
+    
+            fps_lists.append(fps)
+            sens_lists.append(sens)
+            #thresholds_lists.append(thresholds)
+
+        # compute statistic
+        all_fps = np.linspace(self.FROC_minX, self.FROC_maxX, num=10000)
+    
+        # Then interpolate all FROC curves at this points
+        interp_sens = np.zeros((numberOfBootstrapSamples,len(all_fps)), dtype = 'float32')
+        for i in range(numberOfBootstrapSamples):
+            interp_sens[i,:] = np.interp(all_fps, fps_lists[i], sens_lists[i])
+    
+        # compute mean and CI
+        mean_value = np.mean(interp_sens,axis=0)
+        std_error = st.sem(interp_sens,axis=0)
+        # Compute the confidence interval
+        confidence_interval = t.interval(confidence, len(interp_sens) - 1, loc=mean_value, scale=std_error)
+        
+        sens_mean,sens_lb,sens_up=mean_value,confidence_interval[0],confidence_interval[1]
+
+        return all_fps, sens_mean, sens_lb, sens_up
+    
+                
     @property
     def version(self):
-        return "1.4.x"
+        return "1.5.x"
 
     def as_dict(self):
         return {
@@ -334,11 +502,73 @@ class Metrics:
             "case_weight": self.case_weight,
         }
 
+    def fullBootstrap(self):
+        aurocBoot,APBoot,aufrocBoot,PRRImageBoot,PRRLesionBoot,Dice_avgBoot=[],[],[],[],[],[]
+        for i in range(self.reps):
+            aurocBoot.append(self.calculate_ROC(subject_list=self.bootstrap_list[i])['AUROC'])
+            APBoot.append(self.calculate_precision_recall(subject_list=self.bootstrap_list[i])['AP'])
+            aufrocBoot.append(self.calculate_ROC(subject_list=self.bootstrap_list[i])['AUFROC'])
+            PRRImageBoot.append(self.prediction_rejection_ratio(subject_list=self.bootstrap_list[i],level='image'))
+            PRRLesionBoot.append(self.prediction_rejection_ratio(subject_list=self.bootstrap_list[i],level='lesion'))
+            Dice_avgBoot.append(self.DiceLesion(subject_list=self.bootstrap_list[i])['mean'])
+        fps_bs_itp,sens_bs_mean,sens_bs_lb,sens_bs_up=self.computeFROC_bootstrap()
+        self.bootstrapMetrics={
+            # aggregates
+            "auroc_bootstrap": np.mean(aurocBoot),
+            "AP_bootstrap": np.mean(APBoot),
+            "Ranking_bootstrap": (np.mean(aurocBoot)+np.mean(APBoot))/2,
+            "aufroc_bootstrap":np.mean(aufrocBoot),
+            "PRR-imageLevel_bootstrap":np.mean(PRRImageBoot),
+            "PRR-LesionLevel_bootstrap":np.mean(PRRLesionBoot),
+            "Dice_avg-LesionLevel_bootstrap":np.mean(Dice_avgBoot),
+            "auroc-CI_bootstrap": self.compute_confidenceInterval(aurocBoot)['CI'],
+            "AP-CI_bootstrap": self.compute_confidenceInterval(APBoot)['CI'],
+            "aufroc-CI_bootstrap":self.compute_confidenceInterval(aufrocBoot)['CI'],
+            "PRR-imageLevel-CI_bootstrap":self.compute_confidenceInterval(PRRImageBoot)['CI'],
+            "PRR-LesionLevel-CI_bootstrap":self.compute_confidenceInterval(PRRLesionBoot)['CI'],
+            "Dice_avg-LesionLevel-CI_bootstrap":self.compute_confidenceInterval(Dice_avgBoot)['CI'],
+            "fps_bs_itp_bootstrap":fps_bs_itp,
+            "sens_bs_mean_bootstrap":sens_bs_mean,
+            "sens_bs_lb_bootstrap":sens_bs_lb,
+            "sens_bs_up_bootstrap":sens_bs_up,
+            "fps-1/8":sens_bs_mean[np.round(fps_bs_itp,3)==1/8][0],
+            "fps-1/4":sens_bs_mean[np.round(fps_bs_itp,3)==1/4][0],
+            "fps-1/2":sens_bs_mean[np.round(fps_bs_itp,3)==1/2][0],
+            "fps-1":sens_bs_mean[np.round(fps_bs_itp,3)==1][0],
+            "fps-2":sens_bs_mean[np.round(fps_bs_itp,3)==2][0],
+            "fps-4":sens_bs_mean[np.round(fps_bs_itp,3)==4][0],
+            "fps-8":sens_bs_mean[np.round(fps_bs_itp,3)==8][0],
+            "CPM":(sens_bs_mean[np.round(fps_bs_itp,3)==1/8][0]+sens_bs_mean[np.round(fps_bs_itp,3)==1/4][0]+
+                          sens_bs_mean[np.round(fps_bs_itp,3)==1/2][0]+sens_bs_mean[np.round(fps_bs_itp,3)==1][0]+
+                          sens_bs_mean[np.round(fps_bs_itp,3)==2][0]+sens_bs_mean[np.round(fps_bs_itp,3)==4][0]+
+                          sens_bs_mean[np.round(fps_bs_itp,3)==8][0])/8,
+                        "fps-1/8":sens_bs_mean[np.round(fps_bs_itp,3)==1/8][0],
+            "fps-1/4_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==1/4][0],sens_bs_up[np.round(fps_bs_itp,3)==1/4][0]],
+            "fps-1/2_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==1/2][0],sens_bs_up[np.round(fps_bs_itp,3)==1/2][0]],
+            "fps-1_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==1][0],sens_bs_up[np.round(fps_bs_itp,3)==1][0]],
+            "fps-2_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==2][0],sens_bs_up[np.round(fps_bs_itp,3)==2][0]],
+            "fps-4_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==4][0],sens_bs_up[np.round(fps_bs_itp,3)==4][0]],
+            "fps-8_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==8][0],sens_bs_up[np.round(fps_bs_itp,3)==8][0]],
+            "CPM_CI":[(sens_bs_lb[np.round(fps_bs_itp,3)==1/8][0]+sens_bs_lb[np.round(fps_bs_itp,3)==1/4][0]+
+                          sens_bs_lb[np.round(fps_bs_itp,3)==1/2][0]+sens_bs_lb[np.round(fps_bs_itp,3)==1][0]+
+                          sens_bs_lb[np.round(fps_bs_itp,3)==2][0]+sens_bs_lb[np.round(fps_bs_itp,3)==4][0]+
+                          sens_bs_lb[np.round(fps_bs_itp,3)==8][0])/8,(sens_bs_up[np.round(fps_bs_itp,3)==1/8][0]+
+                          sens_bs_up[np.round(fps_bs_itp,3)==1/4][0]+sens_bs_up[np.round(fps_bs_itp,3)==1/2][0]+
+                          sens_bs_up[np.round(fps_bs_itp,3)==1][0]+sens_bs_up[np.round(fps_bs_itp,3)==2][0]+
+                          sens_bs_up[np.round(fps_bs_itp,3)==4][0]+sens_bs_up[np.round(fps_bs_itp,3)==8][0])/8]
+        }
+        return self.bootstrapMetrics
+
     def full_dict(self):
         return {
             # aggregates
             "auroc": self.auroc,
             "AP": self.AP,
+            "Ranking":self.score,
+            "aufroc":self.aufroc,
+            "PRR-imageLevel":self.prediction_rejection_ratio(subject_list=self.subject_list,level='image'),
+            "PRR-LesionLevel":self.prediction_rejection_ratio(subject_list=self.subject_list,level='lesion'),
+            "Dice_avg-LesionLevel":self.DiceLesion(subject_list=self.subject_list)['mean'],
             "num_cases": self.num_cases,
             "num_lesions": self.num_lesions,
             "picai_eval_version": self.version,
@@ -377,6 +607,10 @@ class Metrics:
     def save_full(self, path: PathLike):
         """Save metrics to file (including derived metrics)"""
         save_metrics(metrics=self.full_dict(), file_path=path)
+    
+    def save_fullBootstrap(self, path: PathLike):
+        """Save metrics to file (including derived metrics)"""
+        save_metrics(metrics=self.fullBootstrap(), file_path=path)
 
     def save_minimal(self, path: PathLike):
         """Save metrics to file (minimal required metrics)"""

@@ -61,9 +61,9 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
         if opt.sched=='warmup_cosine' or opt.sched=='cosine_anneal':
             trainConfig.Config.lr_scheduler.step()
             lrupdate=trainConfig.Config.optimizer.param_groups[0]['lr']
-        else:
-            trainConfig.Config.lr_scheduler.step(epoch + 1)
-            lrupdate=trainConfig.Config.optimizer.param_groups[0]['lr']
+        elif opt.sched =='poly':
+            lrupdate=trainConfig.Config.lr_scheduler.step(epoch + 1)
+            trainConfig.Config.optimizer.param_groups[0]['lr']=lrupdate
         print(f"Learning Rate Updated! New Value: {lrupdate:.10}", flush=True)
     else:
         lrupdate=trainConfig.Config.optimizer.param_groups[0]['lr']
@@ -94,7 +94,7 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
                 Config=trainConfig,
                 )
 
-test_Predict_Rank(model,opt,test_loader,datalen[1])# modify to perform test simultaniously or activate an option for only test
+#test_Predict_Rank(model,opt,test_loader,datalen[1])# modify to perform test simultaniously or activate an option for only test
 
 print(
     f"Training Complete! Peak Validation Ranking Score: {trainConfig.Config.tracking_metrics['best_metric']:.4f} "

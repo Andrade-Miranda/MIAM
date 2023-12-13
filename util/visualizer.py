@@ -1,16 +1,23 @@
 import numpy as np
 import os
-import ntpath
-import time
 from . import util
-#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 #from util.tsne import tsne
 import torch
 import math
 from monai.visualize import blend_images, matshow3d
+import matplotlib.pyplot as plt
+from sklearn.metrics import PrecisionRecallDisplay, RocCurveDisplay,auc 
+from matplotlib.gridspec import GridSpec
+import matplotlib.lines as lines
+from help_fnct.calibration.uncertainty_helpers import UncertaintyOps
+#matplotlib.use('Agg')
+from matplotlib.ticker import FixedFormatter
 
 
+from sklearn.calibration import calibration_curve, CalibrationDisplay
+import wandb
+#os.environ["WANDB_MODE"]="offline"
 
 class VisualPlots():
     def __init__(self, opt):
@@ -254,7 +261,356 @@ class VisualPlots():
         plt.show()
         #plt.savefig(os.path.join(self.opt.out_dir,str(best_metric_epoch)+'_'+str(best_metric)+'Recall-Precision.pdf'))
         plt.savefig(os.path.join(self.opt.out_dir,'HD-ASD.pdf'))  
+
+
+class Picai_ResultsPlots():
+
+    def __init__(self, opt,wandb_logger):
+        self.opt=opt
+        self.wandb_logger=wandb_logger
+
+    def plot_wandb(self,metrics,seg_metrics,calibration_values,UseEvaluator):
+        self.y_prob,self.y_test,ECE,_,_,prr,AUC,self.percentile,self.integrated_scores,self.integrated_accuracy,self.scores,self.fitted_accuracy=calibration_values
+        self.wandb_logger.log({
+                                "AP/imgLevel":metrics.bootstrapMetrics["AP_bootstrap"],
+                                "Ranking/imgLevel":(metrics.bootstrapMetrics["AP_bootstrap"]+UseEvaluator["image-level classification"]["1"]["image-level AUC"])/2,
+                                "AUROC/imgLevel":UseEvaluator["image-level classification"]["1"]["image-level AUC"],
+                               "AUROC/voxelLevel":AUC,
+                               "CPM/LesionLevel":metrics.bootstrapMetrics["CPM"],
+                               "CCR/imgLevel":UseEvaluator["image-level classification"]["1"]["CCR"],
+                               "PRR/imgLevel":metrics.bootstrapMetrics['PRR-imageLevel_bootstrap'],
+                               "PRR/LesionLevel":metrics.bootstrapMetrics['PRR-LesionLevel_bootstrap'],
+                               "PRR/voxelLevel":prr,
+                               "VS/VoxelLevel":UseEvaluator["mean"]["1"]["Volumetric Similarity"],
+                               "DSC/VoxelLevel":UseEvaluator["mean"]["1"]["Dice"],
+                               "DSC/LesionLevel":metrics.bootstrapMetrics['Dice_avg-LesionLevel_bootstrap'],
+                                "ECE-clasf/calibr":self.ECE,
+                                "ECE-Seg/calibr":ECE,                              
+                                "ROC" : wandb.plot.roc_curve([metrics.case_target[s] for s in metrics.subject_list],
+                                                        [[1-metrics.case_pred[s],metrics.case_pred[s]] for s in metrics.subject_list],
+                                                        labels=['Benign','Malign'],classes_to_plot=1,
+                                                         title='ROC'),
+                                "PR":wandb.plot.pr_curve([metrics.case_target[s] for s in metrics.subject_list], 
+                                                   [[1-metrics.case_pred[s],metrics.case_pred[s]] for s in metrics.subject_list],
+                                                   labels=['Benign','Malign'],classes_to_plot=1,
+                                                   title='Precision vs Recall'),
+                                "Confusion Matrix Test WB":wandb.plot.confusion_matrix(y_true=[metrics.case_target[s] for s in metrics.subject_list],
+                                                    preds=[np.argmax([1-metrics.case_pred[s],metrics.case_pred[s]]) for s in metrics.subject_list],     
+                                                    class_names=['Benign','Malign']),
+                                "Confusion Matrix": wandb.sklearn.plot_confusion_matrix(y_true=[metrics.case_target[s] for s in metrics.subject_list],
+                                                                                 y_pred=[np.argmax([1-metrics.case_pred[s],metrics.case_pred[s]]) for s in metrics.subject_list], 
+                                                                                 labels=['Benign','Malign'])                   
+                                                   })
         
+
+        #### FROC plots
+        data = [[x, y] for (x, y) in zip(list(metrics.bootstrapMetrics["fps_bs_itp_bootstrap"]), list(metrics.bootstrapMetrics["sens_bs_mean_bootstrap"]))]
+        table = wandb.Table(data=data, columns=["Average number of false positives per scan", "Sensitivity"])
+        self.wandb_logger.log(
+            {
+            "FROC": wandb.plot.line(table, "Average number of false positives per scan", "Sensitivity", title="FROC performance")
+            }
+        )           
+        #### calibration plots ECE
+        prob_true, prob_pred = calibration_curve(self.y_test, self.y_prob, n_bins=15,strategy='uniform')
+        random_guessing = np.linspace(0, 1, len(prob_pred))
+        # Combine Calibration diagram and Random Guessing in one plot
+        self.wandb_logger.log({"Calibration diagram ECE": wandb.plot.line_series(
+                                xs=[list(prob_pred)] + [list(random_guessing)],
+                                ys=[list(prob_true)] + [list(random_guessing)],
+                                keys=['Calibration','Reference'],
+                                title="Calibration diagram ECE",
+                                xname='Mean Predicted Probability'
+                                )})
+        ## PRR vs dice plots Voxel-Level
+        data = [[x, y] for (x, y) in zip([UseEvaluator["mean"]["1"]["Dice"]],[prr])]
+        table = wandb.Table(data=data, columns = ["Dice","PRR"])
+        self.wandb_logger.log({"PRR vs Dice - voxel level" : wandb.plot.scatter(table, "Dice","PRR", 
+                                 title="PRR vs Dice - voxel level")})
+        ## PRR vs dice plots Image-Level
+        data = [[x, y] for (x, y) in zip([UseEvaluator["mean"]["1"]["Dice"]],[metrics.bootstrapMetrics['PRR-imageLevel_bootstrap']])]
+        table = wandb.Table(data=data, columns = ["Dice","PRR"])
+        self.wandb_logger.log({"PRR vs Dice - image level" : wandb.plot.scatter(table,"Dice", "PRR", 
+                                 title="PRR vs Dice - image level")})
+        ## PRR vs dice plots lesion-Level
+        data = [[x, y] for (x, y) in zip([metrics.bootstrapMetrics['Dice_avg-LesionLevel_bootstrap']],[metrics.bootstrapMetrics['PRR-LesionLevel_bootstrap']])]
+        table = wandb.Table(data=data, columns = ["Dice","PRR"])
+        self.wandb_logger.log({"PRR vs Dice - lesion level" : wandb.plot.scatter(table, "Dice","PRR", 
+                                 title="PRR vs Dice - lesion level")})
+        ## AUROC vs DICE plots voxel-Level
+        data = [[x, y] for (x, y) in zip([UseEvaluator["mean"]["1"]["Dice"]],[AUC])]
+        table = wandb.Table(data=data, columns = ["Dice","AUC"])
+        self.wandb_logger.log({"AUC vs Dice - voxel level" : wandb.plot.scatter(table, "Dice","AUC", 
+                                 title="AUC vs Dice - voxel level")})
+        ## AUROC vs DICE plots Image-Level
+        data = [[x, y] for (x, y) in zip([UseEvaluator["mean"]["1"]["Dice"]],[UseEvaluator["image-level classification"]["1"]["image-level AUC"]])]
+        table = wandb.Table(data=data, columns = ["Dice","AUC"])
+        self.wandb_logger.log({"AUC vs Dice - Image level" : wandb.plot.scatter(table, "Dice","AUC", 
+                                 title="AUC vs Dice - Image level")})
+        ## CPM vs DICE plots Image-Level
+        data = [[x, y] for (x, y) in zip([UseEvaluator["mean"]["1"]["Dice"]],[UseEvaluator["image-level classification"]["1"]["image-level AUC"]])]
+        table = wandb.Table(data=data, columns = ["Dice","CPM"])
+        self.wandb_logger.log({"AUC vs Dice - Image level" : wandb.plot.scatter(table, "Dice", "CPM",
+                                 title="CPM vs Dice - Image level")})
+        
+
+        #### calibration plots ADA ECE
+        #prob_true, prob_pred = calibration_curve(self.y_test, self.y_prob, n_bins=15,strategy='quantile')
+        #random_guessing = np.linspace(0, 1, len(prob_pred))
+        # Combine Calibration diagram and Random Guessing in one plot
+        #self.wandb_logger.log({"Calibration diagram ADA ECE": wandb.plot.line_series(
+        #                        xs=[list(prob_pred)] + [list(random_guessing)],
+        #                        ys=[list(prob_true)] + [list(random_guessing)],
+        #                        keys=['Calibration','Reference'],
+        #                        title="Calibration diagram ADA ECE",
+        #                        xname='Mean Predicted Probability'
+        #                       )})
+
+        #### calibration plots KS test - cumulative score-probability
+        # self.wandb_logger.log({"Cumulative Score/Probability vs percentile ": wandb.plot.line_series(
+        #                         xs=[list(100.0*self.percentile)] + [list(100.0*self.percentile)],
+        #                         ys=[list(self.integrated_scores)] + [list(self.integrated_accuracy)],
+        #                         keys=['Cumulative Score','Cumulative Probability'],
+        #                         title="Cumulative Score/Probability vs percentile ",
+        #                         xname='Percentile'
+        #                         )})
+        # self.wandb_logger.log({"Cumulative Score/Probability vs Cumulative Score": wandb.plot.line_series(
+        #                         xs=[list(self.integrated_scores)] + [list(self.integrated_scores)],
+        #                         ys=[list(self.integrated_scores)] + [list(self.integrated_accuracy)],
+        #                         keys=['Cumulative Score','Cumulative Probability'],
+        #                         title="Cumulative Score/Probability vs Cumulative Score ",
+        #                         xname='Cumulative Score'
+        #                         )})
+        # self.wandb_logger.log({"Score/Probability vs Percentile": wandb.plot.line_series(
+        #                         xs=[list(100.0*self.percentile)] + [list(100.0*self.percentile)],
+        #                         ys=[list(self.scores)] + [list(self.fitted_accuracy)],
+        #                         keys=['Score','Probability'],
+        #                         title="Score/Probability vs Percentile",
+        #                         xname='Percentile'
+        #                         )})   
+        # self.wandb_logger.log({"Score/Probability vs Score": wandb.plot.line_series(
+        #                         xs=[list(self.scores)] + [list(self.scores)],
+        #                         ys=[list(self.scores)] + [list(self.fitted_accuracy)],
+        #                         keys=['Score','Probability'],
+        #                         title="Score/Probability vs Score",
+        #                         xname='Score'                                
+        #                         )})
+        ####################################################################################                                      
+        
+        self.wandb_logger.finish() 
+    
+    def Plot_curves(self,metrics,seg_metrics,calibration_values,UseEvaluator):
+        self.plot_PR_ROC_FROC(metrics)
+        self.plot_FROC_bootstrap(metrics)
+        self.calibrationMetrics=UncertaintyOps
+        self.calibration_curves_Clasification(metrics)
+
+        if  self.opt.enable_wandb: 
+            self.plot_wandb(metrics,seg_metrics,calibration_values,UseEvaluator)   
+
+    def plot_PR_ROC_FROC(self,metrics):
+        # Precision-Recall (PR) curve
+        self.precision = metrics.precision
+        self.recall = metrics.recall
+
+        # Receiver Operating Characteristic (ROC) curve
+        self.tpr = metrics.case_TPR
+        self.fpr = metrics.case_FPR
+
+        # Free-Response Receiver Operating Characteristic (FROC) curve
+        self.sensitivity = metrics.lesion_TPR
+        self.fp_per_case = metrics.lesion_FPR
+
+        # plot Precision-Recall (PR) curve
+        self.dispPR = PrecisionRecallDisplay(precision=self.precision, recall=self.recall, average_precision=metrics.AP)
+        self.dispPR.plot()
+        plt.show()
+        plt.savefig(os.path.join(self.opt.outputSoft_dir,'PR.pdf'))
+        plt.close()
+
+        # plot Receiver Operating Characteristic (ROC) curve
+        f, ax = plt.subplots()
+        self.dispROC = RocCurveDisplay(fpr=self.fpr, tpr=self.tpr, roc_auc=metrics.auroc)#,estimator_name=self.opt.name.split('__')[0])
+        self.dispROC.plot(ax=ax)
+        ax.plot([0,1],[0,1],linestyle='--', color='red')
+        plt.show()
+        plt.savefig(os.path.join(self.opt.outputSoft_dir,'ROC.pdf'))
+        plt.close()
+
+        # plot Free-Response Receiver Operating Characteristic (FROC) curve
+        f, ax = plt.subplots()
+        self.dispFROC = RocCurveDisplay(fpr=self.fp_per_case, tpr=self.sensitivity)#,roc_auc=metrics.aufroc)
+        self.dispFROC.plot(ax=ax)
+        ax.set_xlim(0.001, 5.0); ax.set_xscale('log')
+        ax.set_xlabel("False positives per case"); ax.set_ylabel("Sensitivity")
+        plt.show()
+        plt.savefig(os.path.join(self.opt.outputSoft_dir,'FROC.pdf'))
+        plt.close()
+
+    def plot_FROC_bootstrap(self,metrics):
+        fps_bs_itp,sens_bs_mean,sens_bs_lb,sens_bs_up = metrics.computeFROC_bootstrap()
+        xmin = metrics.FROC_minX
+        xmax = metrics.FROC_maxX
+            # create FROC graphs
+        ax = plt.gca()
+        clr = 'b'
+        ax.plot(fps_bs_itp, sens_bs_mean, color=clr, ls='--')
+        ax.plot(fps_bs_itp, sens_bs_lb, color=clr, ls=':') # , label = "lb")
+        ax.plot(fps_bs_itp, sens_bs_up, color=clr, ls=':') # , label = "ub")
+        ax.fill_between(fps_bs_itp, sens_bs_lb, sens_bs_up, facecolor=clr, alpha=0.05)
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(0, 1)
+        ax.set_xlabel('Average number of false positives per scan')
+        ax.set_ylabel('Sensitivity')
+        #ax.legend(loc='lower right')
+        ax.set_title('FROC performance ')
+        
+        ax.set_xscale('log')
+        ax.xaxis.set_major_formatter(FixedFormatter([0.125,0.25,0.5,1,2,4,8]))
+        
+        # set your ticks manually
+        ax.xaxis.set_ticks([0.125,0.25,0.5,1,2,4,8])
+        ax.yaxis.set_ticks(np.arange(0, 1.1, 0.1))
+        plt.grid(visible=True, which='both')#plt.grid(b=True, which='both')
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.opt.outputSoft_dir,"froc_bootstrap.pdf"))
+        plt.show()
+        plt.close()
+        
+    def calibration_curves_Clasification(self,metrics):
+        y_prob=np.array([[metrics.case_pred[s]] for s in metrics.subject_list])
+        y_test=np.array([metrics.case_target[s] for s in metrics.subject_list])
+        probs=torch.tensor(np.array([[1-metrics.case_pred[s],metrics.case_pred[s]] for s in metrics.subject_list]))
+        self.ECE,self.ADA_ECE,self.ks_test=self.compute_calibrationMetrics(probs, torch.tensor(y_test))
+        ECE="{:.2f}".format(self.ECE.item())
+        ADA_ECE="{:.2f}".format(self.ADA_ECE.item())
+
+        ############ECE Plot#############################
+        self.plot_calibration_curve(y_test, y_prob,strategy='uniform',title='Calibration Curve',file='ECE-clasif',ECE_value=ECE, n_bins=10, ax=None, hist=True)
+        ############ADA ECE Plot#############################
+        self.plot_calibration_curve(y_test, y_prob,strategy='quantile',title='Calibration Curve',file='ADA_ECE-clasif',ECE_value=ADA_ECE, n_bins=10, ax=None, hist=True)
+        ################# KS PLOT ##############################################################
+        self.plot_KS_graphs(probs,torch.tensor(y_test),self.opt.outputSoft_dir,"KS_Test-clasif","KS_TEST")
+
+    def plot_calibration_curve(self,y_true, y_prob,strategy,title,file,ECE_value, n_bins=10, ax=None, hist=True):
+        prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=n_bins,strategy=strategy)
+        if ax is None:
+            ax = plt.gca()
+        if hist:
+            ax.hist(y_prob, weights=np.ones_like(y_prob) / len(y_prob), alpha=.4,
+               bins=np.maximum(10, n_bins))
+        ax.plot([0, 1], [0, 1], ':', c='k')
+        ax.plot(prob_pred, prob_true, marker="o")
+
+        ax.set_xlabel("Mean Predicted Probability")
+        ax.set_ylabel("Fraction of Positives")
+        ax.set_title(title+"\n"+'ECE= '+ ECE_value)
+        ax.grid()
+        ax.set(aspect='equal')
+        plt.show()
+        plt.savefig(os.path.join(self.opt.outputSoft_dir,file+'.pdf'))
+        plt.close()
+        ###### extra plot with bin separated in a new axis:
+        ax1 = plt.subplot(2, 1, 1)
+        ax1.grid()
+        ax1.set_title(title+"\n"+'ECE= '+ ECE_value)
+        dispCER_ECE = CalibrationDisplay(prob_true, prob_pred,y_prob)
+        ax1.plot(prob_pred, prob_true,marker='o',label='Calibration plots')
+        ax1.plot([0,1],[0,1],linestyle='--', color='gray',label='Perfect calibration')
+        # Add histogram
+        ax2 = plt.subplot(2, 1, 2)
+        ax2.hist(dispCER_ECE.y_prob,
+            range=(0,1),
+            bins=np.maximum(10, n_bins),
+            label="",#self.opt.name,
+            )
+        ax2.set(title="Histogram calibration", xlabel="Mean predicted probability", ylabel="Count")
+        plt.tight_layout()
+        plt.show()
+        plt.savefig(os.path.join(self.opt.outputSoft_dir,"Histogram_"+file))
+        plt.close()
+    
+    def compute_calibrationMetrics(self,y_prob, y_test):
+        ECE=self.calibrationMetrics.ECE(y_prob, y_test, num_bins=10, binning_strategy='equal_size', class_wise=False)
+        ADA_ECE=self.calibrationMetrics.ECE(y_prob, y_test, num_bins=10, binning_strategy='equal_population', class_wise=False)
+        ks_test=self.calibrationMetrics.ks_test(y_prob, y_test,class_wise=False)
+
+        return ECE,ADA_ECE,ks_test
+
+
+    def plot_KS_graphs(self,scores, labels, outdir, plotname, title="", spline_method='parabolic', splines=6, showplots=True):
+
+        probs, preds = torch.max(scores, dim=1)
+        accs = preds.eq(labels)
+        # Change to numpy, then this will work
+        scores = self.calibrationMetrics.ensure_numpy(probs)
+        labels = self.calibrationMetrics.ensure_numpy(accs)
+    
+        # Sort the data
+        order = np.argsort(scores)
+        scores = scores[order]
+        labels = labels[order]
+    
+        # Accumulate and normalize by dividing by num samples
+        nsamples = len(scores)
+        integrated_scores = np.cumsum(scores) / nsamples
+        integrated_accuracy   = np.cumsum(labels) / nsamples
+        percentile = np.linspace (0.0, 1.0, nsamples)
+        fitted_accuracy, fitted_error = self.calibrationMetrics.compute_accuracy(scores, labels, splines, spline_method)
+    
+        # Work out the Kolmogorov-Smirnov error
+        KS_error_max = np.amax(np.absolute (integrated_scores - integrated_accuracy))
+    
+        if showplots:
+            # Set up the graphs
+            f, ax = plt.subplots(1, 4, figsize=(20, 5))
+            size = 0.2
+            f.suptitle (title+ f"\nKS-error = {str(round(float(KS_error_max),4)*100.0)}%, "
+                               f"Probability={str(round(float(integrated_accuracy[-1]),4)*100.0)}%"
+                        , fontsize=18, fontweight="bold")
+    
+            # First graph, (accumualated) integrated_scores and integrated_accuracy vs sample number
+            ax[0].plot(100.0*percentile, integrated_scores, linewidth=3, label='Cumulative Score')
+            ax[0].plot(100.0*percentile, integrated_accuracy, linewidth=3, label='Cumulative Probability')
+            ax[0].set_xlabel("Percentile", fontsize=16, fontweight="bold")
+            ax[0].set_ylabel("Cumulative Score / Probability", fontsize=16, fontweight="bold")
+            ax[0].legend(fontsize=13)
+            ax[0].set_title('(a)', y=-size, fontweight="bold", fontsize=16) # increase or decrease y as needed
+            ax[0].grid()
+    
+            # Second graph, (accumualated) integrated_scores and integrated_accuracy versus
+            # integrated_scores
+            ax[1].plot(integrated_scores, integrated_scores, linewidth=3, label='Cumulative Score')
+            ax[1].plot(integrated_scores, integrated_accuracy, linewidth=3,
+                       label="Cumulative Probability")
+            ax[1].set_xlabel("Cumulative Score", fontsize=16, fontweight="bold")
+            # ax[1].set_ylabel("Cumulative Score / Probability", fontsize=12)
+            ax[1].legend(fontsize=13)
+            ax[1].set_title('(b)', y=-size, fontweight="bold", fontsize=16) # increase or decrease y as needed
+            ax[1].grid()
+    
+            # Third graph, scores and accuracy vs percentile
+            ax[2].plot(100.0*percentile, scores, linewidth=3, label='Score')
+            ax[2].plot(100.0*percentile, fitted_accuracy, linewidth=3, label=f"Probability")
+            ax[2].set_xlabel("Percentile", fontsize=16, fontweight="bold")
+            ax[2].set_ylabel("Score / Probability", fontsize=16, fontweight="bold")
+            ax[2].legend(fontsize=13)
+            ax[2].set_title('(c)', y=-size, fontweight="bold", fontsize=16) # increase or decrease y as needed
+            ax[2].grid()
+    
+            # Fourth graph,
+            # integrated_scores
+            ax[3].plot(scores, scores, linewidth=3, label=f"Score")
+            ax[3].plot(scores, fitted_accuracy, linewidth=3, label='Probability')
+            ax[3].set_xlabel("Score", fontsize=16, fontweight="bold")
+            # ax[3].set_ylabel("Score / Probability", fontsize=12)
+            ax[3].legend(fontsize=13)
+            ax[3].set_title('(d)', y=-size, fontweight="bold", fontsize=16) # increase or decrease y as needed
+            ax[3].grid()
+            plt.show()
+            plt.savefig(os.path.join(outdir, plotname) + '_KS.pdf', bbox_inches="tight")
+            plt.close()
+
         
     # def save_latentspacePlot(self,epochs,zConv,labels,zVit,option):
     #     # labelsVit=[]
