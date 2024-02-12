@@ -355,11 +355,18 @@ class Metrics:
             logits_tumor=[self.case_pred[s]  for s in subject_list]
             logits_notumor=[1-self.case_pred[s]  for s in subject_list]            
         else:# lesion level
-            labels=torch.tensor([truelabel[0] for truelabel in self.get_lesion_results_flat(subject_list=subject_list)])
-            logits_tumor=[truelabel[1] for truelabel in self.get_lesion_results_flat(subject_list=subject_list)]
-            logits_notumor=[1-truelabel[1] for truelabel in self.get_lesion_results_flat(subject_list=subject_list)]
+            data=self.get_lesion_results_flat(subject_list=subject_list)
+            #for subject_id in subject_list:
+            #    if len(self.lesion_results[subject_id])==0:
+            #        data.append((0,0,1))
+            #    else:
+            #        for is_lesion, confidence, overlap in self.lesion_results[subject_id]:
+            #            data.append((is_lesion, confidence, overlap))#self.get_lesion_results_flat(subject_list=subject_list)
+            labels=torch.tensor([truelabel[0] for truelabel in data ])
+            logits_tumor=[truelabel[1] for truelabel in data]
+            logits_notumor=[1-truelabel[1] for truelabel in data]
         logits=torch.tensor(np.concatenate((np.array(logits_notumor)[:,None],np.array(logits_tumor)[:,None]),axis=1))
-
+   
          # Get class probabilities
         probs = logits # For maskformer we compute probs directly
      

@@ -161,6 +161,8 @@ def load_trainingSetup(file_name,args,numiter):
             elif key=='dropout_rate':
                 if args.mode=='MCdropOut':
                     value=args.MCDropOutRate
+                else:
+                    value=float(value)
             elif key=='mlp_dim':
                 value=int(value)
             elif key=='num_heads':
@@ -423,52 +425,53 @@ def Mode_MeanEnsemb(opt,Nfolds):
     if opt[0].saveSoftmax:
         subject_list=[]
         maybe_mkdir_p(opt[0].outputSoft_dir)
-    ####################################    
+    ####################################
     data_loader = CreateDataLoader(opt[0])
-    test_loader = data_loader.load_test()#as is the same model use same pre-processing
-    models=[predict_from_folder(opt[i]).eval() for i in range(len(Nfolds))]
-    testConfig=[TrainSetup(opt[i],models[i]) for i in range(len(Nfolds))]
+    if not opt[0].Only_enable_evaluation:    
+        test_loader = data_loader.load_test()#as is the same model use same pre-processing
+        models=[predict_from_folder(opt[i]).eval() for i in range(len(Nfolds))]
+        testConfig=[TrainSetup(opt[i],models[i]) for i in range(len(Nfolds))]
 
-    with torch.no_grad():#Context-manager that disabled gradient calculation.
-        for preprocessed in test_loader:
-            output_filename, (val_data, dct) = preprocessed
-            if isinstance(val_data, str):
-                data = np.load(val_data)
-                os.remove(val_data)
-                val_data= data
-            val_inputs=torch.from_numpy(val_data)[None,...].to(opt[0].device)
-            val_outputs = [testConfig[i].Config.inference(val_inputs) for i in range(len(Nfolds))]
+        with torch.no_grad():#Context-manager that disabled gradient calculation.
+            for preprocessed in test_loader:
+                output_filename, (val_data, dct) = preprocessed
+                if isinstance(val_data, str):
+                    data = np.load(val_data)
+                    os.remove(val_data)
+                    val_data= data
+                val_inputs=torch.from_numpy(val_data)[None,...].to(opt[0].device)
+                val_outputs = [testConfig[i].Config.inference(val_inputs) for i in range(len(Nfolds))]
 
-            val_outputsSoftmax=torch.stack([testConfig[j].Config.post_trans(val_outputs[j][0][-1][None,...]) for j in range(len(val_outputs))],dim=0).mean(dim=0)
-            val_outputs_seg = testConfig[0].Config.postLast(val_outputsSoftmax)            
+                val_outputsSoftmax=torch.stack([testConfig[j].Config.post_trans(val_outputs[j][0][-1][None,...]) for j in range(len(val_outputs))],dim=0).mean(dim=0)
+                val_outputs_seg = testConfig[0].Config.postLast(val_outputsSoftmax)            
 
-            #save segmentation
-            out_fname=output_filename
-            save_segmentation_nifti_from_softmax(val_outputs_seg.detach().cpu(), out_fname,
-                                     dct, order=1,
-                                     region_class_order= opt[0].region_class_order,
-                                     seg_postprogess_fn= testConfig[0].Config.postprocessing, 
-                                     seg_postprocess_args= {out_fname},
-                                     resampled_npz_fname= None,
-                                     non_postprocessed_fname= None, force_separate_z= None,
-                                     interpolation_order_z= 0, verbose= True,isbrats=opt[0].isbrats)
-            
-            # save softmax prediction
-            if opt[0].saveSoftmax:
-                subject_list +=[output_filename.split('/')[-1].split('.')[0]]
-                # save complete softmax prediction only use prostate to postprocessing
-                save_segmentation_nifti_softmax(val_outputsSoftmax.detach().cpu(), join(opt[0].outputSoft_dir,output_filename.split('/')[-1]),
-                                     dct, order=1,
-                                     region_class_order= opt[0].region_class_order,
-                                     seg_postprogess_fn= testConfig[0].Config.postprocessing, seg_postprocess_args= {out_fname},
-                                     resampled_npz_fname= None,
-                                     non_postprocessed_fname= None, force_separate_z= None,
-                                     interpolation_order_z= 0, verbose= True,isbrats=opt[0].isbrats)
+                #save segmentation
+                out_fname=output_filename
+                save_segmentation_nifti_from_softmax(val_outputs_seg.detach().cpu(), out_fname,
+                                        dct, order=1,
+                                        region_class_order= opt[0].region_class_order,
+                                        seg_postprogess_fn= testConfig[0].Config.postprocessing, 
+                                        seg_postprocess_args= {out_fname},
+                                        resampled_npz_fname= None,
+                                        non_postprocessed_fname= None, force_separate_z= None,
+                                        interpolation_order_z= 0, verbose= True,isbrats=opt[0].isbrats)
+                
+                # save softmax prediction
+                if opt[0].saveSoftmax:
+                    subject_list +=[output_filename.split('/')[-1].split('.')[0]]
+                    # save complete softmax prediction only use prostate to postprocessing
+                    save_segmentation_nifti_softmax(val_outputsSoftmax.detach().cpu(), join(opt[0].outputSoft_dir,output_filename.split('/')[-1]),
+                                        dct, order=1,
+                                        region_class_order= opt[0].region_class_order,
+                                        seg_postprogess_fn= testConfig[0].Config.postprocessing, seg_postprocess_args= {out_fname},
+                                        resampled_npz_fname= None,
+                                        non_postprocessed_fname= None, force_separate_z= None,
+                                        interpolation_order_z= 0, verbose= True,isbrats=opt[0].isbrats)
 
-            del val_outputsSoftmax,val_outputs_seg
-    #### need to include a condition for the case that do not include ground truth########
-    #### also a condition to decide which type of evaluation is going to be performed #### (classification, segmentation)
-    #check if subject_list is not empty
+                del val_outputsSoftmax,val_outputs_seg
+        #### need to include a condition for the case that do not include ground truth########
+        #### also a condition to decide which type of evaluation is going to be performed #### (classification, segmentation)
+        #check if subject_list is not empty
     if not subject_list:
         subject_list=data_loader.dataset.dataset_IDs
     subject_list.sort()
@@ -480,6 +483,7 @@ def Mode_MeanEnsemb(opt,Nfolds):
                           bootstrap = True,
                           y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred,threshold=0.5)[0],#lambda pred: extract_lesion_candidates(pred,threshold="dynamic")[0],
                           detection_map_postfixes=[""],
+                          #min_overlap=0.01,
                           label_postfixes=[""],num_parallel_calls=1,overlap_func = 'DSC'
                         )
         # perform classification metrics without bootstrapping
@@ -546,7 +550,7 @@ def Mode_MCdropout(opt,Nfolds):
         wandb_logger = wandb.init(project=opt[0].project,
                                     entity="xamus86",
                                     config=opt[0],
-                                    name=opt[0].nameRun+'_ensemble',
+                                    name=opt[0].nameRun+'_MCdropout',
                                     dir=dir_wandb)
     else:
         wandb_logger=None
@@ -556,13 +560,14 @@ def Mode_MCdropout(opt,Nfolds):
     if opt[0].saveSoftmax:
         subject_list=[]
         maybe_mkdir_p(opt[0].outputSoft_dir)
+        MCresults=Path(*opt[0].outputSoft_dir.split('/')[:-1]+['MC_results']+[opt[0].outputSoft_dir.split('/')[-1]])
+        maybe_mkdir_p(MCresults)
     ####################################    
     data_loader = CreateDataLoader(opt[0])
     test_loader = data_loader.load_test()#as is the same model use same pre-processing
 
     
-    models=[enable_dropout(predict_from_folder(opt[i]).eval()) for i in range(len(Nfolds))]
-    testConfig=[TrainSetup(opt[i],models[i]) for i in range(len(Nfolds))]
+    models=[predict_from_folder(opt[i]).eval() for i in range(len(Nfolds))]
 
     for preprocessed in test_loader:
         output_filename, (val_data, dct) = preprocessed
@@ -573,6 +578,7 @@ def Mode_MCdropout(opt,Nfolds):
         val_inputs=torch.from_numpy(val_data)[None,...].to(opt[0].device)
         predictions = []
         for passes in range(forward_passes):
+            testConfig=[TrainSetup(opt[i],enable_dropout(models[i])) for i in range(len(Nfolds))]
             with torch.no_grad():#Context-manager that disabled gradient calculation.
                 val_outputs = [testConfig[i].Config.inference(val_inputs) for i in range(len(Nfolds))]
                 val_outputsSoftmax=torch.stack([testConfig[j].Config.post_trans(val_outputs[j][0][-1][None,...]) for j in range(len(val_outputs))],dim=0).mean(dim=0)
@@ -582,6 +588,8 @@ def Mode_MCdropout(opt,Nfolds):
         ### how i can implement this
         ##########################################
         val_outputsSoftmax = np.mean(np.asarray(predictions),axis=0)
+        val_outputsSoftmax_variance = np.var(np.asarray(predictions),axis=0)
+        allPredictions=np.asarray(predictions)
         val_outputs_seg = testConfig[0].Config.postLast(val_outputsSoftmax)  
                  
         #save segmentation
@@ -606,6 +614,16 @@ def Mode_MCdropout(opt,Nfolds):
                                      resampled_npz_fname= None,
                                      non_postprocessed_fname= None, force_separate_z= None,
                                      interpolation_order_z= 0, verbose= True,isbrats=opt[0].isbrats)
+            
+            save_segmentation_nifti_softmax(torch.from_numpy(val_outputsSoftmax_variance).detach().cpu(), join(MCresults,output_filename.split('/')[-1]),
+                                     dct, order=1,
+                                     region_class_order= opt[0].region_class_order,
+                                     seg_postprogess_fn= testConfig[0].Config.postprocessing, seg_postprocess_args= {out_fname},
+                                     resampled_npz_fname= None,
+                                     non_postprocessed_fname= None, force_separate_z= None,
+                                     interpolation_order_z= 0, verbose= True,isbrats=opt[0].isbrats)
+            # Save the array to a .npz file
+            np.savez(join(MCresults,output_filename.split('/')[-1].split('.')[0])+'.npz', data=allPredictions)
 
         del val_outputsSoftmax,val_outputs_seg
     #### need to include a condition for the case that do not include ground truth########

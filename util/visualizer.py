@@ -347,11 +347,11 @@ class Picai_ResultsPlots():
         table = wandb.Table(data=data, columns = ["Dice","AUC"])
         self.wandb_logger.log({"AUC vs Dice - Image level" : wandb.plot.scatter(table, "Dice","AUC", 
                                  title="AUC vs Dice - Image level")})
-        ## CPM vs DICE plots Image-Level
-        data = [[x, y] for (x, y) in zip([UseEvaluator["mean"]["1"]["Dice"]],[UseEvaluator["image-level classification"]["1"]["image-level AUC"]])]
+        ## CPM vs DICE plots Lesion-Level
+        data = [[x, y] for (x, y) in zip([metrics.bootstrapMetrics['Dice_avg-LesionLevel_bootstrap']],[metrics.bootstrapMetrics["CPM"]])]
         table = wandb.Table(data=data, columns = ["Dice","CPM"])
-        self.wandb_logger.log({"AUC vs Dice - Image level" : wandb.plot.scatter(table, "Dice", "CPM",
-                                 title="CPM vs Dice - Image level")})
+        self.wandb_logger.log({"CPM vs Dice - Lesion level" : wandb.plot.scatter(table, "Dice", "CPM",
+                                 title="CPM vs Dice - Lesion level")})
         
 
         #### calibration plots ADA ECE
