@@ -73,20 +73,20 @@ def Evaluate_Segcalibration_Folder(
                     prob_vector_Tumor=pred_inside_mask
                     label_vector = gdth_inside_mask
                 else:
-                    prob_vector_GT = np.concatenate((prob_vector_GT, 1-pred_inside_mask))
-                    prob_vector_Tumor = np.concatenate((prob_vector_Tumor, pred_inside_mask))
+                    prob_vector_GT = np.concatenate((prob_vector_GT, 1-pred_inside_mask))#no tumor predictin
+                    prob_vector_Tumor = np.concatenate((prob_vector_Tumor, pred_inside_mask))# tumor prediction
                     label_vector = np.concatenate((label_vector, gdth_inside_mask))
     
     probs=torch.tensor(np.concatenate((prob_vector_GT[:,None],prob_vector_Tumor[:,None]),axis=1))
     y_test=torch.tensor(label_vector)
-    ECE,ADA_ECE,ks_test,prr,AUC,percentile,integrated_scores,integrated_accuracy,scores,fitted_accuracy=calibration_curves_Segmentation(probs,y_test,outputpath)
+    ECE,ADA_ECE,ks_test,prr,AUC=calibration_curves_Segmentation(probs,y_test,outputpath)
 
-    return probs[:,-1], y_test,ECE,ADA_ECE,ks_test,prr,AUC,percentile,integrated_scores,integrated_accuracy,scores,fitted_accuracy
+    return probs[:,-1], y_test,ECE,ADA_ECE,ks_test,prr,AUC #,percentile,integrated_scores,integrated_accuracy,scores,fitted_accuracy
 
 
 def calibration_curves_Segmentation(probs,y_test,outputpath):
     num_bins=15
-    ECE_value,ADA_ECE_value,ks_test,prr,AUC=compute_calibrationMetrics(probs, y_test,num_bins=num_bins)
+    ECE_value,ADA_ECE_value,ks_test,prr,AUC=compute_calibrationMetrics(probs, y_test,num_bins=num_bins,outputpath=outputpath)
     ECE="{:.2f}".format(ECE_value.item())
     ADA_ECE="{:.2f}".format(ADA_ECE_value.item())
 
@@ -97,8 +97,8 @@ def calibration_curves_Segmentation(probs,y_test,outputpath):
     plot_calibration_curve(y_test, probs[:,-1],strategy='quantile',title='Calibration Curve',file='ADA_ECE-Seg',ECE_value=ADA_ECE,outputSoft_dir=outputpath, 
                            n_bins=num_bins, ax=None, hist=False)
     ################# KS PLOT ##############################################################
-    percentile,integrated_scores,integrated_accuracy,scores,fitted_accuracy=plot_KS_graphs(probs,y_test,outputpath,"KS_Test-seg","KS_TEST")
-    return ECE_value,ADA_ECE_value,ks_test,prr,AUC,percentile,integrated_scores,integrated_accuracy,scores,fitted_accuracy
+    #percentile,integrated_scores,integrated_accuracy,scores,fitted_accuracy=plot_KS_graphs(probs,y_test,outputpath,"KS_Test-seg","KS_TEST")
+    return ECE_value,ADA_ECE_value,ks_test,prr,AUC #,percentile,integrated_scores,integrated_accuracy,scores,fitted_accuracy
 
 
 def plot_calibration_curve(y_true, y_prob,strategy,title,file,ECE_value,outputSoft_dir, n_bins=10, ax=None, hist=True):
@@ -139,12 +139,12 @@ def plot_calibration_curve(y_true, y_prob,strategy,title,file,ECE_value,outputSo
     #plt.savefig(os.path.join(outputSoft_dir,"Histogram_"+file))
     #plt.close()
     
-def compute_calibrationMetrics(y_prob, y_test,num_bins):
+def compute_calibrationMetrics(y_prob, y_test,num_bins,outputpath):
     calibrationMetrics=UncertaintyOps()
     ECE=calibrationMetrics.ECE(y_prob, y_test, num_bins=num_bins, binning_strategy='equal_size', class_wise=False)
     ADA_ECE=calibrationMetrics.ECE(y_prob, y_test, num_bins=num_bins, binning_strategy='equal_population', class_wise=False)
     ks_test=calibrationMetrics.ks_test(y_prob, y_test,class_wise=False)
-    prr = calibrationMetrics.prediction_rejection_ratio(y_test,y_prob,metric='prob', norm_logits=True)
+    prr = calibrationMetrics.prediction_rejection_ratio(y_test,y_prob,outputpath,metric='prob', norm_logits=True)
     AUC=calibrationMetrics.auroc(y_test,y_prob[:,1])
 
     return ECE,ADA_ECE,ks_test,prr,AUC

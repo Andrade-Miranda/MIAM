@@ -266,14 +266,6 @@ def check_input_folder_and_return_caseIDs(input_folder, expected_num_modalities)
 def Mode_NCrossval(opt,Nfolds):
     
     for i in range(len(Nfolds)):
-        if not opt[i].sigmoid:
-            post_trans = Compose(
-                [Activations(softmax=True)]#[Activations(sigmoid=True)]
-            )
-        else:
-            post_trans = Compose(
-                [Activations(sigmoid=True)]
-            )
         ####check if wandb is available
         if opt[i].enable_wandb:
             dir_wandb=os.makedirs(os.path.join('wandb'), exist_ok=True)
@@ -291,54 +283,53 @@ def Mode_NCrossval(opt,Nfolds):
             subject_list=[]
             maybe_mkdir_p(opt[i].outputSoft_dir)
         ####################################
-        model=predict_from_folder(opt[i]).eval() #load model
         data_loader = CreateDataLoader(opt[i]) #create dataloader
-        testConfig=TrainSetup(opt[i],model) #load test setup
-        test_loader = data_loader.load_test()
-        model.eval()
-        with torch.no_grad():#Context-manager that disabled gradient calculation.
-            for preprocessed in test_loader:
-                output_filename, (val_data, dct) = preprocessed
-                if isinstance(val_data, str):
-                    data = np.load(val_data)
-                    os.remove(val_data)
-                    val_data= data
-                val_inputs=torch.from_numpy(val_data)[None,...].to(opt[i].device)
-                val_outputs = testConfig.Config.inference(val_inputs)
+        if not opt[i].Only_enable_evaluation:
+            test_loader = data_loader.load_test()
+            model=predict_from_folder(opt[i]).eval() #load model
+            testConfig=TrainSetup(opt[i],model) #load test setup
+            
+            with torch.no_grad():#Context-manager that disabled gradient calculation.
+                for preprocessed in test_loader:
+                    output_filename, (val_data, dct) = preprocessed
+                    if isinstance(val_data, str):
+                        data = np.load(val_data)
+                        os.remove(val_data)
+                        val_data= data
+                    val_inputs=torch.from_numpy(val_data)[None,...].to(opt[i].device)
+                    val_outputs = testConfig.Config.inference(val_inputs)
+                    
+                    val_outputsSoftmax = testConfig.Config.post_trans(val_outputs[:,-1])
+                    val_outputs_seg = testConfig.Config.postLast(val_outputsSoftmax) 
+                    
 
-                if opt[i].sigmoid:
-                    val_outputs_seg = testConfig.Config.post_trans(val_outputs[0][-1][None,...])
-                    val_outputsSoftmax = post_trans(val_outputs[:,-1])
-                else:
-                    val_outputs_seg = testConfig.Config.post_trans(val_outputs[0])
-                    val_outputsSoftmax = post_trans(val_outputs[0])[-1][None,...]
-                #save segmentation
-                out_fname=output_filename
-                save_segmentation_nifti_from_softmax(val_outputs_seg.detach().cpu(), out_fname,
-                                         dct, order=1,
-                                         region_class_order= opt[i].region_class_order,
-                                         seg_postprogess_fn= testConfig.Config.postprocessing, 
-                                         seg_postprocess_args= {out_fname},
-                                         resampled_npz_fname= None,
-                                         non_postprocessed_fname= None, force_separate_z= None,
-                                         interpolation_order_z= 0, verbose= True,isbrats=opt[i].isbrats)
-                
-                # save softmax prediction
-                if opt[i].saveSoftmax:
-                    subject_list +=[output_filename.split('/')[-1].split('.')[0]]
-                    # save complete softmax prediction only use prostate to postprocessing
-                    save_segmentation_nifti_softmax(val_outputsSoftmax.detach().cpu(), join(opt[i].outputSoft_dir,output_filename.split('/')[-1]),
-                                         dct, order=1,
-                                         region_class_order= opt[i].region_class_order,
-                                         seg_postprogess_fn= testConfig.Config.postprocessing, seg_postprocess_args= {out_fname},
-                                         resampled_npz_fname= None,
-                                         non_postprocessed_fname= None, force_separate_z= None,
-                                         interpolation_order_z= 0, verbose= True,isbrats=opt[i].isbrats)
-
-                del val_outputsSoftmax,val_outputs_seg
-        #### need to include a condition for the case that do not include ground truth########
-        #### also a condition to decide which type of evaluation is going to be performed #### (classification, segmentation)
-        #check if subject_list is not empty
+                    #save segmentation
+                    out_fname=output_filename
+                    save_segmentation_nifti_from_softmax(val_outputs_seg.detach().cpu(), out_fname,
+                                            dct, order=1,
+                                            region_class_order= opt[i].region_class_order,
+                                            seg_postprogess_fn= testConfig.Config.postprocessing, 
+                                            seg_postprocess_args= {out_fname},
+                                            resampled_npz_fname= None,
+                                            non_postprocessed_fname= None, force_separate_z= None,
+                                            interpolation_order_z= 0, verbose= True,isbrats=opt[i].isbrats)
+                    
+                    # save softmax prediction
+                    if opt[i].saveSoftmax:
+                        subject_list +=[output_filename.split('/')[-1].split('.')[0]]
+                        # save complete softmax prediction only use prostate to postprocessing
+                        save_segmentation_nifti_softmax(val_outputsSoftmax.detach().cpu(), join(opt[i].outputSoft_dir,output_filename.split('/')[-1]),
+                                            dct, order=1,
+                                            region_class_order= opt[i].region_class_order,
+                                            seg_postprogess_fn= testConfig.Config.postprocessing, seg_postprocess_args= {out_fname},
+                                            resampled_npz_fname= None,
+                                            non_postprocessed_fname= None, force_separate_z= None,
+                                            interpolation_order_z= 0, verbose= True,isbrats=opt[i].isbrats)
+    
+                    del val_outputsSoftmax,val_outputs_seg
+            #### need to include a condition for the case that do not include ground truth########
+            #### also a condition to decide which type of evaluation is going to be performed #### (classification, segmentation)
+            #check if subject_list is not empty
         if not subject_list:
             subject_list=data_loader.dataset.dataset_IDs
         subject_list.sort()
@@ -375,6 +366,9 @@ def Mode_NCrossval(opt,Nfolds):
             # save classification with bootstrapping
             clasif_metrics.save_fullBootstrap(Path(opt[i].outputSoft_dir) / "metrics_bootstrap.json")
 
+            #save prediction rejection plots
+            clasif_metrics.Plot_PRR_Image_Lesion(opt[i].outputSoft_dir)
+
             #calibration segmentation
             calibration_values=Evaluate_Segcalibration_Folder(
                                             gdth_path=opt[i].y_true_dir,
@@ -382,7 +376,7 @@ def Mode_NCrossval(opt,Nfolds):
                                             mask_path=opt[i].postpro_dir,
                                             outputpath=opt[i].outputSoft_dir)
             #sumary calibration and misclassification
-            _,_,ECE,ADA_ECE,ks_test,prr,AUC,_,_,_,_,_=calibration_values
+            _,_,ECE,ADA_ECE,ks_test,prr,AUC=calibration_values
             sumaryCalib=pd.DataFrame({'ECE':[ECE.item()],'ADA_ECE':[ADA_ECE.item()],'ks_test':[ks_test],'PRR-voxel':[prr],'AUC-voxel':[AUC]})
             sumary_file = Path(Path(opt[i].outputSoft_dir)) / "sumary_calibration.csv"
             sumaryCalib.to_csv(sumary_file, index=False)

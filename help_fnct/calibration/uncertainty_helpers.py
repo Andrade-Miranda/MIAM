@@ -4,6 +4,8 @@ from torch.nn import functional as F
 from torch import nn, optim
 from sklearn.metrics import auc, roc_auc_score
 from help_fnct.calibration.spline import Spline
+import matplotlib.pyplot as plt
+import os
 
 
 class UncertaintyOps:
@@ -89,9 +91,12 @@ class UncertaintyOps:
         ece : Scalar with the expected callibration error.
         '''
         
-        # Filter out background class
-        probs = probs[labels != 0, :]
-        labels = labels[labels != 0]
+        # Filter out part of background class and keep only tumor voxels
+        idx=np.random.choice(np.where(labels==0)[0],size=int(len(np.where(labels==0)[0])*0.2),replace=False)
+        prostate_voxel=probs[idx]
+        labels_prostate=labels[idx]
+        probs = torch.cat((probs[labels != 0, :],prostate_voxel))
+        labels = torch.cat((labels[labels != 0],labels_prostate))
         
         if not class_wise: # Compute callibration only for predicted classes.
             probs, preds = torch.max(probs, dim=1)
@@ -395,7 +400,7 @@ class UncertaintyOps:
         return best_temp
     
     
-    def prediction_rejection_ratio(self, labels, logits, metric='prob', norm_logits=False):
+    def prediction_rejection_ratio(self, labels, logits, outputpath,metric='prob', norm_logits=False):
         # Based on https://github.com/KaosEngineer/PriorNetworks/blob/master/prior_networks/assessment/rejection.py
 
         # compute area between base_error(1-x) and the rejection curve
@@ -403,8 +408,11 @@ class UncertaintyOps:
         # take the ratio
 
         # Filter out background class
-        #logits = logits[labels != 0, :]
-        #labels = labels[labels != 0]
+        idx=np.random.choice(np.where(labels==0)[0],size=int(len(np.where(labels==0)[0])*0.2),replace=False)
+        prostate_voxel=logits[idx]
+        labels_prostate=labels[idx]
+        logits = torch.cat((logits[labels != 0, :],prostate_voxel))
+        labels = torch.cat((labels[labels != 0],labels_prostate))
         
         # Get class probabilities
         if not norm_logits: # Logits as input
@@ -465,10 +473,39 @@ class UncertaintyOps:
         # reported from -100 to 100
         rejection_ratio = (auc_uns - auc_rnd) / (auc_orc - auc_rnd) * 100.0
 
+        plt.plot(fraction_data, orc, lw=2)
+        plt.fill_between(fraction_data, orc, random_rejection, alpha=0.5)
+        plt.plot(fraction_data, rev_cum_errors[::-1], lw=2)
+        plt.fill_between(fraction_data, rev_cum_errors[::-1], random_rejection, alpha=0.0)
+        plt.plot(fraction_data, random_rejection, 'k--', lw=2)
+        plt.legend(['Oracle', 'Uncertainty', 'Random'])
+        plt.xlabel('Percentage of predictions rejected to oracle')
+        plt.ylabel('Classification Error (%)')
+        plt.savefig(os.path.join(outputpath,'Rejection-Curve-oracle_'+'voxel'+'.png'), bbox_inches='tight', dpi=300)
+            # plt.show()
+        plt.close()
+
+        plt.plot(fraction_data, orc, lw=2)
+        plt.fill_between(fraction_data, orc, random_rejection, alpha=0.0)
+        plt.plot(fraction_data, rev_cum_errors[::-1], lw=2)
+        plt.fill_between(fraction_data, rev_cum_errors[::-1], random_rejection, alpha=0.5)
+        plt.plot(fraction_data, random_rejection, 'k--', lw=2)
+        plt.legend(['Oracle', 'Uncertainty', 'Random'])
+        plt.xlabel('Percentage of predictions rejected to oracle')
+        plt.ylabel('Classification Error (%)')
+        plt.savefig(os.path.join(outputpath,'Rejection-Curve-uncertainty_'+'voxel'+'.png'), bbox_inches='tight', dpi=300)
+        plt.close()
+
         return rejection_ratio
 
     
     def auroc(self, labels, confidence):
+
+        idx=np.random.choice(np.where(labels==0)[0],size=int(len(np.where(labels==0)[0])*0.2),replace=False)
+        prostate_voxel=confidence[idx]
+        labels_prostate=labels[idx]
+        confidence = torch.cat((confidence[labels != 0],prostate_voxel))
+        labels = torch.cat((labels[labels != 0],labels_prostate))
 
         y_true = self.ensure_numpy(labels)[:, np.newaxis]
         y_score = self.ensure_numpy(confidence)[:, np.newaxis]

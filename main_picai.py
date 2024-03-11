@@ -30,9 +30,9 @@ print('#Data loader scheme created')
     
 """ --------load model and config--------------- """ 
 model = create_model(opt)
-x=torch.rand((1,3,96,96,96)).cuda()
-y=model(x)
-n_parameters=sum(p.numel() for p in model.parameters() if p.requires_grad)
+#x=torch.rand((1,3,96,96,96)).cuda()
+#y=model(x)
+#n_parameters=sum(p.numel() for p in model.parameters() if p.requires_grad)
 trainConfig=TrainSetup(opt,model)
 model=trainConfig.Config.model
 """-----------------------------------"""

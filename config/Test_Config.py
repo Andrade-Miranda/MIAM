@@ -31,20 +31,20 @@ class TestConfig():
         self.SurfDis=SurfaceDistanceMetric(include_background=True, symmetric=False, distance_metric='euclidean', reduction="mean")
         #### ----metrics------- 
         
-        if self.opt.dataset_mode=='MeanEnsemb' or self.opt.dataset_mode=='MCdropOut':# tengo que usar sigmoid si el output channel es 1 o el usuario especifica sigmoid (Brats dataset - Picai)
-            if self.opt.sigmoid or self.opt.output_nc==1:
-                self.post_trans = Activations(sigmoid=True)
-                self.postLast=AsDiscrete(threshold=0.5)
-            else:
-                self.post_trans = Activations(softmax=True)
-                self.postLast=AsDiscrete(argmax=True)                
+        #if self.opt.dataset_mode=='MeanEnsemb' or self.opt.dataset_mode=='MCdropOut':# tengo que usar sigmoid si el output channel es 1 o el usuario especifica sigmoid (Brats dataset - Picai)
+        if self.opt.sigmoid or self.opt.output_nc==1:
+            self.post_trans = Activations(sigmoid=True)
+            self.postLast=AsDiscrete(threshold=0.5)
         else:
-            if self.opt.sigmoid or self.opt.output_nc==1:
-                self.post_trans = Compose(
-                [Activations(sigmoid=True), AsDiscrete(threshold=0.5)])
-            else:
-                self.post_trans = Compose(
-                [Activations(softmax=True), AsDiscrete(argmax=True)])                
+            self.post_trans = Activations(softmax=True)
+            self.postLast=AsDiscrete(argmax=True)                
+        #else:
+        #    if self.opt.sigmoid or self.opt.output_nc==1:
+        #        self.post_trans = Compose(
+        #        [Activations(sigmoid=True), AsDiscrete(threshold=0.5)])
+        #    else:
+        #        self.post_trans = Compose(
+        #        [Activations(softmax=True), AsDiscrete(argmax=True)])                
 
         
 

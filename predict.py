@@ -63,7 +63,7 @@ def main():
                         default='BestCHK.pth')
     
     parser.add_argument('--Only_enable_evaluation',action='store_true', dest='Only_enable_evaluation', default=False,
-                    help="enable logging to Weights and Biases")
+                    help="enable only evaluation setup")
 
     # Weights and Biases arguments
     parser.add_argument('--enable_wandb',action='store_true', dest='enable_wandb', default=False,

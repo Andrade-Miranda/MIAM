@@ -23,6 +23,8 @@ from sklearn.metrics import auc, precision_recall_curve, roc_curve
 import torch
 from scipy.stats import t
 import scipy.stats as st
+import matplotlib.pyplot as plt
+import os
 
 
 try:
@@ -327,13 +329,13 @@ class Metrics:
         auroc = auc(fpr, tpr)
         J=tpr-fpr
         idx=np.argmax(J)
-        ###froc###
+        ###froc### I ommit the last value to avoid infinity problem
         TP=self.calculate_counts(subject_list=subject_list)['TP']
         FP=self.calculate_counts(subject_list=subject_list)['FP']
         num_lesions=sum([is_lesion for is_lesion, *_ in self.get_lesion_results_flat(subject_list=subject_list)])
         sensitivity = TP[:-1] / num_lesions
         fp_per_case = FP[:-1] / self.num_cases
-        froc=auc(fp_per_case, sensitivity)
+        froc=auc(fp_per_case, sensitivity)#or self.lesion_FPR [:-1],self.lesion_TPR[:-1]
         return {
             'FPR': fpr,
             'TPR': tpr,
@@ -355,13 +357,13 @@ class Metrics:
             logits_tumor=[self.case_pred[s]  for s in subject_list]
             logits_notumor=[1-self.case_pred[s]  for s in subject_list]            
         else:# lesion level
-            data=self.get_lesion_results_flat(subject_list=subject_list)
-            #for subject_id in subject_list:
-            #    if len(self.lesion_results[subject_id])==0:
-            #        data.append((0,0,1))
-            #    else:
-            #        for is_lesion, confidence, overlap in self.lesion_results[subject_id]:
-            #            data.append((is_lesion, confidence, overlap))#self.get_lesion_results_flat(subject_list=subject_list)
+            data=[]#data=self.get_lesion_results_flat(subject_list=subject_list)
+            for subject_id in subject_list:
+                if len(self.lesion_results[subject_id])==0:
+                    data.append((0,0,1))
+                else:
+                    for is_lesion, confidence, overlap in self.lesion_results[subject_id]:
+                        data.append((is_lesion, confidence, overlap))#self.get_lesion_results_flat(subject_list=subject_list)
             labels=torch.tensor([truelabel[0] for truelabel in data ])
             logits_tumor=[truelabel[1] for truelabel in data]
             logits_notumor=[1-truelabel[1] for truelabel in data]
@@ -383,27 +385,27 @@ class Metrics:
         sorted_idx = torch.argsort(confidence, descending = True)
 
         # reverse cumulative errors function (rev = from all to first, instead from first error to all)
-        rev_cum_errors = []
+        self.rev_cum_errors = []
         # fraction of data rejected, to compute a certain value of rev_cum_errors
-        fraction_data = []
+        self.fraction_data = []
 
         num_samples = preds.shape[0]
      
         errors = (labels[sorted_idx] != preds[sorted_idx]).float().numpy()
-        rev_cum_errors = np.cumsum(errors) / num_samples
-        fraction_data = np.array([float(i + 1) / float(num_samples) * 100.0 for i in range(num_samples)])
+        self.rev_cum_errors = np.cumsum(errors) / num_samples
+        self.fraction_data = np.array([float(i + 1) / float(num_samples) * 100.0 for i in range(num_samples)])
      
-        base_error = rev_cum_errors[-1] # error when all data is taken into account
+        base_error = self.rev_cum_errors[-1] # error when all data is taken into account
 
         # area under the rejection curve (used later to compute area between random and rejection curve)
-        auc_uns = 1.0 - auc(fraction_data / 100.0, rev_cum_errors[::-1] / 100.0)
+        auc_uns = 1.0 - auc(self.fraction_data / 100.0, self.rev_cum_errors[::-1] / 100.0)
 
         # random rejection baseline, it's 1 - x line "scaled" and "shifted" to pass through base error and go to 100% rejection
-        random_rejection = np.asarray(
+        self.random_rejection = np.asarray(
                  [base_error * (1.0 - float(i) / float(num_samples)) for i in range(num_samples)],
                  dtype=np.float32)
         # area under random rejection, should be 0.5
-        auc_rnd = 1.0 - auc(fraction_data / 100.0, random_rejection / 100.0)
+        auc_rnd = 1.0 - auc(self.fraction_data / 100.0, self.random_rejection / 100.0)
 
         # oracle curve, the oracle is assumed to commit the base error
         # making the oracle curve commit the base error allows to remove the impact of the base error when computing
@@ -415,22 +417,24 @@ class Metrics:
         orc_rejection = np.asarray(
                  [base_error * (1.0 - float(i) / float(base_error / 100.0 * num_samples)) for i in
                   range(int(base_error / 100.0 * num_samples))], dtype=np.float32)
-        orc = np.zeros_like(rev_cum_errors)
-        orc[0:orc_rejection.shape[0]] = orc_rejection
-        auc_orc = 1.0 - auc(fraction_data / 100.0, orc / 100.0)
+        self.orc = np.zeros_like(self.rev_cum_errors)
+        self.orc[0:orc_rejection.shape[0]] = orc_rejection
+        auc_orc = 1.0 - auc(self.fraction_data / 100.0, self.orc / 100.0)
          
         # reported from -100 to 100
         rejection_ratio = (auc_uns - auc_rnd) / (auc_orc - auc_rnd) * 100.0
 
         return rejection_ratio
     
+    
     def DiceLesion(self,subject_list: Optional[List[str]] = None):
         data=[lesions[2] for lesions in self.get_lesion_results_flat(subject_list=subject_list) if lesions[2]>0]
 
         # Mean and standard error of the mean
         mean_value = np.mean(data)
+        std_value = np.std(data)
 
-        return {'mean':mean_value}
+        return {'mean':mean_value,"SD":std_value}
     
     def compute_confidenceInterval(self,data,confidence_level=0.95):
         # Confidence level (e.g., 95% confidence interval)
@@ -485,6 +489,35 @@ class Metrics:
 
         return all_fps, sens_mean, sens_lb, sens_up
     
+    def Plot_PRR_Image_Lesion(self, path: str):
+
+        for i in ['image','lesion']:
+            PRRImageBoot=self.prediction_rejection_ratio(subject_list=self.subject_list,level=i)
+            #plot rejection ratio plot
+            plt.plot(self.fraction_data, self.orc, lw=2)
+            plt.fill_between(self.fraction_data, self.orc, self.random_rejection, alpha=0.5)
+            plt.plot(self.fraction_data, self.rev_cum_errors[::-1], lw=2)
+            plt.fill_between(self.fraction_data, self.rev_cum_errors[::-1], self.random_rejection, alpha=0.0)
+            plt.plot(self.fraction_data, self.random_rejection, 'k--', lw=2)
+            plt.legend(['Oracle', 'Uncertainty', 'Random'])
+            plt.xlabel('Percentage of predictions rejected to oracle')
+            plt.ylabel('Classification Error (%)')
+            plt.savefig(os.path.join(path,'Rejection-Curve-oracle_'+i+'.png'), bbox_inches='tight', dpi=300)
+            # plt.show()
+            plt.close()
+
+            plt.plot(self.fraction_data, self.orc, lw=2)
+            plt.fill_between(self.fraction_data, self.orc, self.random_rejection, alpha=0.0)
+            plt.plot(self.fraction_data, self.rev_cum_errors[::-1], lw=2)
+            plt.fill_between(self.fraction_data, self.rev_cum_errors[::-1], self.random_rejection, alpha=0.5)
+            plt.plot(self.fraction_data, self.random_rejection, 'k--', lw=2)
+            plt.legend(['Oracle', 'Uncertainty', 'Random'])
+            plt.xlabel('Percentage of predictions rejected to oracle')
+            plt.ylabel('Classification Error (%)')
+            plt.savefig(os.path.join(path,'Rejection-Curve-uncertainty_'+i+'.png'), bbox_inches='tight', dpi=300)
+            # plt.show()
+            plt.close()
+    
                 
     @property
     def version(self):
@@ -508,6 +541,7 @@ class Metrics:
             "case_target": self.case_target,
             "case_weight": self.case_weight,
         }
+    
 
     def fullBootstrap(self):
         aurocBoot,APBoot,aufrocBoot,PRRImageBoot,PRRLesionBoot,Dice_avgBoot=[],[],[],[],[],[]
@@ -544,25 +578,23 @@ class Metrics:
             "fps-1":sens_bs_mean[np.round(fps_bs_itp,3)==1][0],
             "fps-2":sens_bs_mean[np.round(fps_bs_itp,3)==2][0],
             "fps-4":sens_bs_mean[np.round(fps_bs_itp,3)==4][0],
-            "fps-8":sens_bs_mean[np.round(fps_bs_itp,3)==8][0],
+            #"fps-8":sens_bs_mean[np.round(fps_bs_itp,3)==8][0],
             "CPM":(sens_bs_mean[np.round(fps_bs_itp,3)==1/8][0]+sens_bs_mean[np.round(fps_bs_itp,3)==1/4][0]+
                           sens_bs_mean[np.round(fps_bs_itp,3)==1/2][0]+sens_bs_mean[np.round(fps_bs_itp,3)==1][0]+
-                          sens_bs_mean[np.round(fps_bs_itp,3)==2][0]+sens_bs_mean[np.round(fps_bs_itp,3)==4][0]+
-                          sens_bs_mean[np.round(fps_bs_itp,3)==8][0])/8,
-                        "fps-1/8":sens_bs_mean[np.round(fps_bs_itp,3)==1/8][0],
+                          sens_bs_mean[np.round(fps_bs_itp,3)==2][0]+sens_bs_mean[np.round(fps_bs_itp,3)==4][0])/6,
+            "fps-1/8_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==1/8][0],sens_bs_up[np.round(fps_bs_itp,3)==1/8][0]],
             "fps-1/4_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==1/4][0],sens_bs_up[np.round(fps_bs_itp,3)==1/4][0]],
             "fps-1/2_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==1/2][0],sens_bs_up[np.round(fps_bs_itp,3)==1/2][0]],
             "fps-1_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==1][0],sens_bs_up[np.round(fps_bs_itp,3)==1][0]],
             "fps-2_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==2][0],sens_bs_up[np.round(fps_bs_itp,3)==2][0]],
             "fps-4_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==4][0],sens_bs_up[np.round(fps_bs_itp,3)==4][0]],
-            "fps-8_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==8][0],sens_bs_up[np.round(fps_bs_itp,3)==8][0]],
+            #"fps-8_CI":[sens_bs_lb[np.round(fps_bs_itp,3)==8][0],sens_bs_up[np.round(fps_bs_itp,3)==8][0]],
             "CPM_CI":[(sens_bs_lb[np.round(fps_bs_itp,3)==1/8][0]+sens_bs_lb[np.round(fps_bs_itp,3)==1/4][0]+
                           sens_bs_lb[np.round(fps_bs_itp,3)==1/2][0]+sens_bs_lb[np.round(fps_bs_itp,3)==1][0]+
                           sens_bs_lb[np.round(fps_bs_itp,3)==2][0]+sens_bs_lb[np.round(fps_bs_itp,3)==4][0]+
                           sens_bs_lb[np.round(fps_bs_itp,3)==8][0])/8,(sens_bs_up[np.round(fps_bs_itp,3)==1/8][0]+
                           sens_bs_up[np.round(fps_bs_itp,3)==1/4][0]+sens_bs_up[np.round(fps_bs_itp,3)==1/2][0]+
-                          sens_bs_up[np.round(fps_bs_itp,3)==1][0]+sens_bs_up[np.round(fps_bs_itp,3)==2][0]+
-                          sens_bs_up[np.round(fps_bs_itp,3)==4][0]+sens_bs_up[np.round(fps_bs_itp,3)==8][0])/8]
+                          sens_bs_up[np.round(fps_bs_itp,3)==1][0]+sens_bs_up[np.round(fps_bs_itp,3)==2][0])/6]
         }
         return self.bootstrapMetrics
 
@@ -570,7 +602,7 @@ class Metrics:
         return {
             # aggregates
             "auroc": self.auroc,
-            "AP": self.AP,
+            "AP": self.AP, #this based on lesion not per case
             "Ranking":self.score,
             "aufroc":self.aufroc,
             "PRR-imageLevel":self.prediction_rejection_ratio(subject_list=self.subject_list,level='image'),
