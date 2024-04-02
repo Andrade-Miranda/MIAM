@@ -13,9 +13,9 @@
 #    limitations under the License.
 
 import numpy as np
-from nnunet.experiment_planning.experiment_planner_baseline_3DUNet_v21 import \
+from nnUNet.nnunet.experiment_planning.experiment_planner_baseline_3DUNet_v21 import \
     ExperimentPlanner3D_v21
-from nnunet.paths import *
+from nnUNet.nnunet.paths import *
 
 
 class ExperimentPlanner3D_v22(ExperimentPlanner3D_v21):

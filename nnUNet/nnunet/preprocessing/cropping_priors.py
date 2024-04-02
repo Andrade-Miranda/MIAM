@@ -58,7 +58,7 @@ def get_case_identifier_from_npz(case):
     return case_identifier
 
 
-def load_case_from_list_of_files(data_files, seg_file=None):
+def load_case_from_list_of_files(data_files, seg_file=None,priors_file=None):
     assert isinstance(data_files, list) or isinstance(data_files, tuple), "case must be either a list or a tuple"
     properties = OrderedDict()
     data_itk = [sitk.ReadImage(f) for f in data_files]
@@ -67,6 +67,7 @@ def load_case_from_list_of_files(data_files, seg_file=None):
     properties["original_spacing"] = np.array(data_itk[0].GetSpacing())[[2, 1, 0]]
     properties["list_of_data_files"] = data_files
     properties["seg_file"] = seg_file
+    properties["priors_file"] = priors_file
 
     properties["itk_origin"] = data_itk[0].GetOrigin()
     properties["itk_spacing"] = data_itk[0].GetSpacing()
@@ -75,13 +76,20 @@ def load_case_from_list_of_files(data_files, seg_file=None):
     data_npy = np.vstack([sitk.GetArrayFromImage(d)[None] for d in data_itk])
     if seg_file is not None:
         seg_itk = sitk.ReadImage(seg_file)
-        seg_npy = sitk.GetArrayFromImage(seg_itk)[None].astype(np.float32)
+        seg_npy = sitk.GetArrayFromImage(seg_itk).astype(np.float32)
     else:
         seg_npy = None
-    return data_npy.astype(np.float32), seg_npy, properties
+
+    if priors_file is not None:
+        priors_itk = [sitk.ReadImage(f) for f in priors_file] 
+        priors_npy = np.vstack([sitk.GetArrayFromImage(d)[None] for d in priors_itk])
+    else:
+        priors_npy = None
+
+    return data_npy.astype(np.float32), seg_npy, priors_npy.astype(np.float32), properties
 
 
-def crop_to_nonzero(data, seg=None, nonzero_label=-1):
+def crop_to_nonzero(data, seg=None,priors=None, nonzero_label=-1):
     """
 
     :param data:
@@ -105,6 +113,13 @@ def crop_to_nonzero(data, seg=None, nonzero_label=-1):
             cropped_seg.append(cropped[None])
         seg = np.vstack(cropped_seg)
 
+    if priors is not None:
+        cropped_priors = []
+        for c in range(priors.shape[0]):
+            cropped = crop_to_bbox(priors[c], bbox)
+            cropped_priors.append(cropped[None])
+        priors = np.vstack(cropped_priors)
+
     nonzero_mask = crop_to_bbox(nonzero_mask, bbox)[None]
     if seg is not None:
         seg[(seg == 0) & (nonzero_mask == 0)] = nonzero_label
@@ -113,14 +128,14 @@ def crop_to_nonzero(data, seg=None, nonzero_label=-1):
         nonzero_mask[nonzero_mask == 0] = nonzero_label
         nonzero_mask[nonzero_mask > 0] = 0
         seg = nonzero_mask
-    return data, seg, bbox
+    return data, seg, priors, bbox
 
 
 def get_patient_identifiers_from_cropped_files(folder):
     return [i.split("/")[-1][:-4] for i in subfiles(folder, join=True, suffix=".npz")]
 
 
-class ImageCropper(object):
+class ImageCropper_priors(object):
     def __init__(self, num_threads, output_folder=None):
         """
         This one finds a mask of nonzero elements (must be nonzero in all modalities) and crops the image to that mask.
@@ -136,9 +151,9 @@ class ImageCropper(object):
             maybe_mkdir_p(self.output_folder)
 
     @staticmethod
-    def crop(data, properties, seg=None):
+    def crop(data, properties, seg=None,priors=None):
         shape_before = data.shape
-        data, seg, bbox = crop_to_nonzero(data, seg, nonzero_label=-1)
+        data, seg, priors,bbox = crop_to_nonzero(data, seg,priors, nonzero_label=-1)
         shape_after = data.shape
         print("before crop:", shape_before, "after crop:", shape_after, "spacing:",
               np.array(properties["original_spacing"]), "\n")
@@ -147,12 +162,12 @@ class ImageCropper(object):
         properties['classes'] = np.unique(seg)
         seg[seg < -1] = 0
         properties["size_after_cropping"] = data[0].shape
-        return data, seg, properties
+        return data, seg, priors,properties
 
     @staticmethod
-    def crop_from_list_of_files(data_files, seg_file=None):
-        data, seg, properties = load_case_from_list_of_files(data_files, seg_file)
-        return ImageCropper.crop(data, properties, seg)
+    def crop_from_list_of_files(data_files, seg_file=None,priors_file=None):
+        data, seg, priors,properties = load_case_from_list_of_files(data_files, seg_file,priors_file)
+        return ImageCropper_priors.crop(data, properties, seg,priors)
 
     def load_crop_save(self, case, case_identifier, overwrite_existing=False):
         try:
@@ -160,10 +175,19 @@ class ImageCropper(object):
             if overwrite_existing \
                     or (not os.path.isfile(os.path.join(self.output_folder, "%s.npz" % case_identifier))
                         or not os.path.isfile(os.path.join(self.output_folder, "%s.pkl" % case_identifier))):
+                seglist=[]
+                priorslist=[]
+                datalist=[]
+                for casename in case:
+                    if casename.split('/')[-2]=='imagesTr':
+                        datalist.append(casename)
+                    elif casename.split('/')[-2]=='priorsTr':
+                        priorslist.append(casename)
+                    else:
+                        seglist.append(casename)
+                data, seg, priors, properties = self.crop_from_list_of_files(datalist, seglist, priorslist)
 
-                data, seg, properties = self.crop_from_list_of_files(case[:-1], case[-1])
-
-                all_data = np.vstack((data, seg))
+                all_data = np.vstack((data,priors, seg))
                 np.savez_compressed(os.path.join(self.output_folder, "%s.npz" % case_identifier), data=all_data)
                 with open(os.path.join(self.output_folder, "%s.pkl" % case_identifier), 'wb') as f:
                     pickle.dump(properties, f)

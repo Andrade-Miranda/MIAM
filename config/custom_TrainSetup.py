@@ -9,16 +9,19 @@ def CreateTrainConfig(opt,model):
     elif opt.TrainConfig == 'TIMMConfig':#for training using TIMM library
         from config.TIMM_Config import TIMMConfig
         Config = TIMMConfig()
-    elif opt.TrainConfig == 'PICAIConfig':#for training using TIMM library
+    elif opt.TrainConfig == 'PRIORSConfig':#configuration for Priors mask
+        from config.PRIORS_Config import PRIORSConfig
+        Config = PRIORSConfig()
+    elif opt.TrainConfig == 'BiopsyConfig':#configuration for PICAI challenge
         from config.PICAI_Config import PICAIConfig
         Config = PICAIConfig()
-    elif opt.TrainConfig == 'AMOSConfig':#for training using TIMM library
+    elif opt.TrainConfig == 'AMOSConfig':# COnfig AMOS challenge
         from config.AMOS_Config import AMOSConfig
         Config = AMOSConfig()
     elif opt.TrainConfig == 'ContrastConfig':#for training using contrastive loss
         from config.Contrastive_Config import ContrastiveConfig
         Config = ContrastiveConfig()
-    elif opt.TrainConfig == 'TransFuseConfig':#for test setup
+    elif opt.TrainConfig == 'TransFuseConfig':#for methods based on parallel transformer and CNN
         from config.TransFuse_Config import TransFuseConfig
         Config = TransFuseConfig()
     elif opt.TrainConfig == 'nnUNetConfig': #nnUNEt setup

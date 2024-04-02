@@ -12,9 +12,9 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from nnunet.experiment_planning.experiment_planner_baseline_3DUNet_v21 import \
+from nnUNet.nnunet.experiment_planning.experiment_planner_baseline_3DUNet_v21 import \
     ExperimentPlanner3D_v21
-from nnunet.paths import *
+from nnUNet.nnunet.paths import *
 
 
 class ExperimentPlanner3D_v23(ExperimentPlanner3D_v21):

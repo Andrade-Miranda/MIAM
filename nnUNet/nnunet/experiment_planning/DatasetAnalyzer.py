@@ -148,6 +148,12 @@ class DatasetAnalyzer(object):
         modalities = datasetjson["modality"]
         modalities = {int(k): modalities[k] for k in modalities.keys()}
         return modalities
+    
+    def get_priors(self):
+        datasetjson = load_json(join(self.folder_with_cropped_data, "dataset.json"))
+        priors = datasetjson["priors"]
+        priors = {int(k): priors[k] for k in priors.keys()}
+        return priors
 
     def get_size_reduction_by_cropping(self):
         size_reduction = OrderedDict()
