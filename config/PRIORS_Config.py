@@ -30,7 +30,7 @@ class PRIORSConfig():
     def initialize(self, opt,model):
         self.opt=opt
         self.model=model
-    
+
         # use case-level class balance to deduce required train-time class weights
         # load datasheets
         with open(Path("./nnUNet/data/nnUnet_raw/results/overviews/"+self.opt.dataroot) / f'PI-CAI_train-fold-{self.opt.fold}.json') as fp:
@@ -58,10 +58,11 @@ class PRIORSConfig():
         print(f'Training Samples [-:{self.class_ratio_t[1]};+:{self.class_ratio_t[0]}]: {len(train_data[1])}')
         print(f'Validation Samples [-:{self.class_ratio_v[1]};+:{self.class_ratio_v[0]}]: {len(valid_data[1])}')
 
+
         self.LoadConfig()
     
     def name(self):
-        return "PICAI config"
+        return "Priors config"
     
     
     def LoadConfig(self):
@@ -88,17 +89,17 @@ class PRIORSConfig():
                                          weight=torch.tensor(self.class_weights),
                                          reduction="sum").to(self.opt.device)
         elif self.opt.loss_option=='DiceFocalLoss':
-            self.loss_function=DiceFocalLoss(include_background=False, to_onehot_y=True,#False if self.opt.dataroot=='Task2201_picai' else True, 
-                                        sigmoid=True,#False if self.opt.dataroot=='Task2201_picai' else True, 
-                                        softmax=False,#True if self.opt.dataroot=='Task2201_picai' else False, 
+            self.loss_function=DiceFocalLoss(include_background=False, to_onehot_y=not(self.opt.sigmoid),#False if self.opt.dataroot=='Task2201_picai' else True, 
+                                        sigmoid=self.opt.sigmoid,
+                                        softmax=not(self.opt.sigmoid), 
                                         other_act=None, 
                                         squared_pred=False, jaccard=False, reduction='mean', smooth_nr=1e-05, 
                                         smooth_dr=1e-05, batch=False, gamma=2.0, focal_weight=self.class_weights[1], 
                                         lambda_dice=self.opt.lambda_Loss[0], lambda_focal=self.opt.lambda_Loss[1])
         elif self.opt.loss_option=='GeneralDiceFocalLoss':
-            self.loss_function=GeneralizedDiceFocalLoss(include_background=False, to_onehot_y=True,#False if self.opt.dataroot=='Task2201_picai' else True, 
-                                        sigmoid=False if self.opt.dataroot=='Task2201_picai' else True, 
-                                        softmax=True if self.opt.dataroot=='Task2201_picai' else False, 
+            self.loss_function=GeneralizedDiceFocalLoss(include_background=True, to_onehot_y=not(self.opt.sigmoid),#False if self.opt.dataroot=='Task2201_picai' else True, 
+                                        sigmoid=self.opt.sigmoid, 
+                                        softmax=not(self.opt.sigmoid),
                                         other_act=None, 
                                         reduction='mean', 
                                         smooth_nr=1e-05, 
@@ -108,7 +109,7 @@ class PRIORSConfig():
                                         lambda_gdl=self.opt.lambda_Loss[0], lambda_focal=self.opt.lambda_Loss[1])
         else:
             print("Choosing by default DiceCELoss")
-            self.loss_function = DiceCELoss(smooth_nr=0, smooth_dr=1e-5, squared_pred=False, to_onehot_y=False, sigmoid=True)
+            self.loss_function = DiceCELoss(smooth_nr=0, smooth_dr=1e-5, squared_pred=False, to_onehot_y=not(self.opt.sigmoid), sigmoid=self.opt.sigmoid, softmax=not(self.opt.sigmoid))
     ################################################################################################################################################
         
     ##################Schedule CONFIGURATION##############################################""
@@ -136,15 +137,17 @@ class PRIORSConfig():
     ################################################################################################################################################
         
         ###will depend of task
-        self.post_trans = Compose(
+        if self.opt.sigmoid and self.opt.output_nc==1:
+            self.post_trans = Compose(
                 [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
             )
-           #[Activations(softmax=True), AsDiscrete(argmax=True,to_onehot=self.opt.output_nc)] [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
+        elif not self.opt.sigmoid and self.opt.output_nc>1:
+            self.post_trans = Compose([Activations(softmax=True), AsDiscrete(argmax=True,to_onehot=self.opt.output_nc)]) 
 
         #metrics
-        self.dice_metricTrain = DiceMetric(include_background=False, reduction="mean",ignore_empty=True)
-        self.dice_metricVal = DiceMetric(include_background=False, reduction="mean",ignore_empty=True)
-        self.dice_metricTest = DiceMetric(include_background=False, reduction="mean",ignore_empty=False)
+        self.dice_metricTrain = DiceMetric(include_background=True, reduction="mean")
+        self.dice_metricVal = DiceMetric(include_background=True, reduction="mean")
+        self.dice_metricTest = DiceMetric(include_background=True, reduction="mean")
 
         print('#Config Training scheme created')
         
@@ -270,6 +273,6 @@ class PRIORSConfig():
             return _compute(input)
 
     def name(self):
-        return "PICAIConfig"
+        return "Priors Biopsy Config"
 
 

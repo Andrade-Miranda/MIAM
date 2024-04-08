@@ -52,10 +52,9 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
         train_gen=train_loader, 
         args=opt, 
         tracking_metrics=trainConfig.Config.tracking_metrics,
-        writer=opt.log_writer,
         wandb_logger=opt.wandb_logger,
         Config=trainConfig,
-        Debug=None
+        Debug=Plots if opt.debug else None
         )
     
     ############## learning rate update and setup################

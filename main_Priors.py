@@ -6,8 +6,7 @@ from options.train_options import TrainOptions
 from data.data_loader import CreateDataLoader
 from config.train_setup import TrainSetup
 from models.models import create_model
-from util.engine import optimize_model,validate_model,test_Predict_Rank
-#from timm.utils import get_state_dict
+from util.enginePrior import optimize_model,validate_model,test_Predict_Rank
 
 from monai.utils import set_determinism
 
@@ -43,7 +42,7 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
     print("-" * 10,flush=True)
     trainConfig.Config.tracking_metrics['epoch'] = epoch
     
-    model, trainConfig.Config.optimizer, train_loader, trainConfig.Config.tracking_metrics,opt.log_writer, opt.wandb_logger  = optimize_model( 
+    model, trainConfig.Config.optimizer, train_loader, trainConfig.Config.tracking_metrics, opt.wandb_logger  = optimize_model( 
         model=model, 
         optimizer=trainConfig.Config.optimizer, 
         loss_func=trainConfig.Config.loss_function,
@@ -52,10 +51,9 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
         train_gen=train_loader, 
         args=opt, 
         tracking_metrics=trainConfig.Config.tracking_metrics,
-        writer=opt.log_writer,
         wandb_logger=opt.wandb_logger,
         Config=trainConfig,
-        Debug=None
+        Debug= Plots if opt.debug else None
         )
     
     ############## learning rate update and setup################
@@ -83,15 +81,13 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
         # validate model per N epochs + export model weights
         model.eval()
         with torch.no_grad():  # no gradient updates during validation
-            model, trainConfig.Config.optimizer, val_loader, trainConfig.Config.tracking_metrics, opt.log_writer,opt.wandb_logger,
-            valid_metrics = validate_model(
+            model, trainConfig.Config.optimizer, val_loader, trainConfig.Config.tracking_metrics,opt.wandb_logger = validate_model(
                 model=model, 
                 loss_func=trainConfig.Config.loss_function,
                 optimizer=trainConfig.Config.optimizer, 
                 valid_gen=val_loader, 
                 args=opt,
                 tracking_metrics=trainConfig.Config.tracking_metrics, 
-                writer=opt.log_writer,
                 wandb_logger=opt.wandb_logger,
                 Config=trainConfig,
                 )
@@ -101,7 +97,6 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
 print(
     f"Training Complete! Peak Validation Ranking Score: {trainConfig.Config.tracking_metrics['best_metric']:.4f} "
     f"@ Epoch: {trainConfig.Config.tracking_metrics['best_metric_epoch']}")
-opt.log_writer.close()
 if  opt.enable_wandb:
     opt.wandb_logger.finish()
 # --------------------------------------------------------------------------------------------------------------------------

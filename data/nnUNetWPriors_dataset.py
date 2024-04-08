@@ -36,7 +36,7 @@ from batchgenerators.transforms.channel_selection_transforms import DataChannelS
     SegChannelSelectionTransform
 from batchgenerators.transforms.color_transforms import GammaTransform
 from batchgenerators.transforms.spatial_transforms import SpatialTransform, MirrorTransform
-from batchgenerators.transforms.utility_transforms import RemoveLabelTransform, RenameTransform, NumpyToTensor
+from batchgenerators.transforms.utility_transforms import RemoveLabelTransform, RenameTransform, NumpyToTensor,AppendChannelsTransform
 
 from batchgenerators.augmentations.utils import rotate_coords_3d, rotate_coords_2d
 
@@ -47,7 +47,7 @@ from nnUNet.nnunet.training.data_augmentation.pyramid_augmentations import MoveS
     ApplyRandomBinaryOperatorTransform, \
     RemoveRandomConnectedComponentFromOneHotEncodingTransform
 
-from nnUNet.nnunet.training.dataloading.dataset_loading import DataLoader3D, load_dataset
+from nnUNet.nnunet.training.dataloading.custom_datasets.dataset_loadingPriors import DataLoader3D, load_dataset
 from util.dataset_Testloading import DataLoaderTest3D
 
 import pickle
@@ -66,6 +66,9 @@ class nnUNetWPriorsDataset(BaseDataset):
         
         self.opt=opt
         self.default_3D_augmentation_params = {
+            "AppendChannelsTransform": [0,1],#  modify to be automatic loading properties
+            "CopyChannelsTransform": [1,2],
+
             "selected_data_channels": None,
             "selected_seg_channels": None,
 
@@ -191,6 +194,10 @@ class nnUNetWPriorsDataset(BaseDataset):
         assert params.get('mirror') is None, "old version of params, use new keyword do_mirror"
         tr_transforms = []
 
+        #move the priors channels to seg for data augmentation
+        if params.get("AppendChannelsTransform") is not None:
+            tr_transforms.append(AppendChannelsTransform('priors','seg',params.get("AppendChannelsTransform"),True))
+        ######
         if params.get("selected_data_channels") is not None:
             tr_transforms.append(DataChannelSelectionTransform(params.get("selected_data_channels")))
 
@@ -255,7 +262,8 @@ class nnUNetWPriorsDataset(BaseDataset):
             tr_transforms.append(ConvertSegmentationToRegionsTransform(regions, 'label', 'label'))
             #tr_transforms.append(ConvertSegToRegionsTransform(regions,keys="label"))
 
-        tr_transforms.append(NumpyToTensor(['image', 'label'], 'float'))
+        tr_transforms.append(CopyChannelsTransform('label','priors',params.get("CopyChannelsTransform"),True))
+        tr_transforms.append(NumpyToTensor(['image', 'label','priors'], 'float'))
 
         tr_transforms = Compose(tr_transforms)
 
@@ -281,7 +289,7 @@ class nnUNetWPriorsDataset(BaseDataset):
             val_transforms.append(ConvertSegmentationToRegionsTransform(regions, 'label', 'label'))
             #val_transforms.append(ConvertSegToRegionsTransform(regions,keys="label"))
 
-        val_transforms.append(NumpyToTensor(['image', 'label'], 'float'))
+        val_transforms.append(NumpyToTensor(['image', 'label','priors'], 'float'))
         val_transforms = Compose(val_transforms)
 
         batchgenerator_test = DataLoaderTest3D(self.dataset_val,val_transforms,1)
@@ -297,13 +305,13 @@ class nnUNetWPriorsDataset(BaseDataset):
         return batchgenerator_train, batchgenerator_val,batchgenerator_test
 
 
-    def do_split(self,dataset,fold):
+    def do_split(self,dataset):
         """
         This is a suggestion for if your dataset is a dictionary (my personal standard)
         :return:
             """
         dataset_directory=self.opt.expr_dir
-        splits_file = os.path.join(dataset_directory, "splits_final.pkl")
+        splits_file = os.path.join(dataset_directory, "splits_final.pkl")# condition for old version have to be updated and deleted
         if not os.path.isfile(splits_file):
             splits = []
             all_keys_sorted = np.sort(list(dataset.keys()))
@@ -375,7 +383,7 @@ class nnUNetWPriorsDataset(BaseDataset):
                                           self.default_3D_augmentation_params['rotation_z'],
                                           self.default_3D_augmentation_params['scale_range'])
 
-        self.dataset_tr,self.dataset_val=self.do_split(dataset,self.fold)
+        self.dataset_tr,self.dataset_val=self.do_split(dataset)
         
         
         dtran = DataLoader3D(self.dataset_tr, basic_patch_size, np.array(self.opt.imageSize).astype(int), self.opt.batchSize,
@@ -434,6 +442,38 @@ class ConvertSegToRegionsTransform(AbstractTransform):
             data_dict[self.output_key] = region_output
         return data_dict
     
-    
-    
-    
+
+class CopyChannelsTransform(AbstractTransform):
+    def __init__(self, input_key, output_key, channel_indexes, remove_from_input=True):
+        """
+        Moves channels specified by channel_indexes from input_key in data_dict to output_key (by appending in the
+        order specified in channel_indexes). The channels will be removed from input if remove_from_input is True
+        :param input_key:
+        :param output_key:
+        :param channel_indexes: must be tuple or list
+        :param remove_from_input:
+        """
+        self.remove_from_input = remove_from_input
+        self.channel_indexes = channel_indexes
+        self.output_key = output_key
+        self.input_key = input_key
+        assert isinstance(self.channel_indexes, (tuple, list)), "channel_indexes must be either tuple or list of int"
+
+    def __call__(self, **data_dict):
+        inp = data_dict.get(self.input_key)
+        outp = data_dict.get(self.output_key)
+
+        assert inp is not None, "input_key %s is not present in data_dict" % self.input_key
+
+        selected_channels = inp[:, self.channel_indexes]
+
+        outp = selected_channels
+        data_dict[self.output_key] = outp
+
+
+        if self.remove_from_input:
+            remaining = [i for i in range(inp.shape[1]) if i not in self.channel_indexes]
+            inp = inp[:, remaining]
+            data_dict[self.input_key] = inp
+
+        return data_dict

@@ -48,7 +48,7 @@ class VisualPlots():
         plt.savefig(os.path.join(self.opt.out_dir,'PartialResults_'+str(slices)+'_'+str(epoch)+'.pdf'))
 
     def segment_thumbnails(self,image,label,frame_dim,savepath,FigName):
-        ret = blend_images(image, label, alpha=0.6, cmap="hsv", rescale_arrays=False)
+        ret = blend_images(image, label, alpha=0.5, cmap="hsv", rescale_arrays=False)
         fig=matshow3d(
                 volume=ret,
                 fig=None,
@@ -59,10 +59,10 @@ class VisualPlots():
                 channel_dim=0,
                 show=False,
                 cmap="gray",
-                vmin=-1,
+                vmin=0,
                 vmax=1,
                 )
-        plt.savefig(savepath+FigName+'.pdf')                
+        plt.savefig(savepath+'/'+FigName+'.pdf')                
             
     def save_Loss_MetricsBrats(self, epoch_loss_values,val_loss_values, metric_values_tumor, best_metric_epoch,best_metric,metric_values_tc,metric_values_wt,metric_values_et,val_interval):
         

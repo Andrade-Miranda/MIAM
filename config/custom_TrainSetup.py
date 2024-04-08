@@ -12,9 +12,6 @@ def CreateTrainConfig(opt,model):
     elif opt.TrainConfig == 'PRIORSConfig':#configuration for Priors mask
         from config.PRIORS_Config import PRIORSConfig
         Config = PRIORSConfig()
-    elif opt.TrainConfig == 'BiopsyConfig':#configuration for PICAI challenge
-        from config.PICAI_Config import PICAIConfig
-        Config = PICAIConfig()
     elif opt.TrainConfig == 'AMOSConfig':# COnfig AMOS challenge
         from config.AMOS_Config import AMOSConfig
         Config = AMOSConfig()

@@ -173,7 +173,6 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
     """Optimize model x N training steps per epoch + update learning rate"""
 
     train_loss, step = 0,  0
-    dice_loss,focal_loss=0,0
     trainingKeys=[]
     start_time = time.time()
     epoch = tracking_metrics['epoch']
@@ -187,14 +186,16 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
         try:
             inputs = batch_data["image"].to(args.device, non_blocking=True)#image.to(device, non_blocking=True)
             labels = batch_data["label"].to(args.device, non_blocking=True)#label.to(device, non_blocking=True)
+            priors = batch_data["priors"].to(args.device, non_blocking=True)#label.to(device, non_blocking=True)
         except Exception:
             inputs = torch.from_numpy(batch_data['image']).to(args.device)
             labels = torch.from_numpy(batch_data['label']).to(args.device)
+            priors = torch.from_numpy(batch_data['priors']).to(args.device)
         trainingKeys.append(batch_data['keys'])
 
         if Debug:
             Debug.segment_thumbnails(image=inputs[0][0:1],label=labels[0],frame_dim=1,savepath=args.out_dir,FigName=trainingKeys[step-1][0])
-            
+            Debug.segment_thumbnails(image=inputs[0][0:1],label=priors[0][1:2],frame_dim=1,savepath=args.out_dir,FigName=trainingKeys[step-1][0]+'Priors')
 
         if args.VAL_AMP:
             with torch.cuda.amp.autocast():
@@ -207,7 +208,7 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
         train_loss += loss.item()
 
         if 'PICAI' in args.TrainConfig:
-            ####THIS IS ONLY FOR PICAI check this
+            ####THIS IS ONLY FOR PICAI
             labels_ = F.one_hot(labels[:, -1, ...].long(), num_classes=args.output_nc).float()
             labels_ = torch.moveaxis(labels_, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
             ################
@@ -230,8 +231,6 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
 
     # track training metrics
     train_loss /= step
-    dice_loss /= step
-    focal_loss /= step
 
     DSCTrain=Config.Config.dice_metricTrain.aggregate().item()
     tracking_metrics['train_loss'] = train_loss
@@ -257,7 +256,7 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
 ##########################VALIDATTION WITH CLASSIFICATION##########################################
 def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics,wandb_logger,Config):
     """Validate model per N epoch + export model weights"""
-    all_valid_preds, all_valid_labels,all_valid_keys,val_loss = [], [],[], 0
+    val_loss = 0
     epoch, f = tracking_metrics['epoch'], tracking_metrics['fold_id']
     step=0
 
@@ -268,45 +267,24 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
         try:
             valid_images = valid_data["image"].to(args.device, non_blocking=True)
             valid_labels = valid_data["label"].to(args.device, non_blocking=True)
+            valid_priors = valid_data["priors"].to(args.device, non_blocking=True)#label.to(device, non_blocking=True)
         except Exception:
             valid_images = torch.from_numpy(valid_data['image']).to(args.device)
             valid_labels = torch.from_numpy(valid_data['label']).to(args.device)
-        
+            valid_priors = torch.from_numpy(valid_data['priors']).to(args.device)
+
         outputs = model(valid_images)
         valloss = loss_func(outputs, valid_labels)# tomo el zero para poder hacer one-hot
         val_loss += valloss.item()
 
-        labels = F.one_hot(valid_labels[:, -1, ...].long(), num_classes=2).float()
-        labels = torch.moveaxis(labels, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
-        Config.Config.dice_metricVal(Config.Config.post_trans(outputs),labels)#one-hot format
+        if 'PICAI' in args.TrainConfig:
+            ####THIS IS ONLY FOR PICAI
+            labels = F.one_hot(valid_labels[:, -1, ...].long(), num_classes=2).float()
+            labels = torch.moveaxis(labels, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
+            #######
+        else:
+            Config.Config.dice_metricVal(Config.Config.post_trans(outputs),valid_labels)
 
-        # test-time augmentation
-        valid_images = [valid_images, torch.flip(valid_images, [4]).to(args.device)]
-
-        # aggregate all validation predictions
-        # gaussian blur to counteract checkerboard artifacts in
-        # predictions from the use of transposed conv. in the U-Net
-        preds = [
-             torch.sigmoid(model(x))[:,-1, ...].detach().cpu().numpy()
-             for x in valid_images
-         ]
-
-        # revert horizontally flipped tta image
-        preds[1] = np.flip(preds[1], [3])
-
-        # gaussian blur to counteract checkerboard artifacts in
-        # predictions from the use of transposed conv. in the U-Net
-        all_valid_preds += [
-             np.mean([
-                 gaussian_filter(x, sigma=1.5)
-                 for x in preds
-             ], axis=0)   #append to the list the validation prediction
-         ]
-        
-        all_valid_labels += [labels[:, -1, ...].cpu().numpy()] #append to the list the validation true label
-        #pred_bin=Config.Config.post_trans(outputs)[:, -1, ...]
-        #all_valid_preds += #[torch.sigmoid(outputs)[:, -1, ...].detach().cpu().numpy()]
-        all_valid_keys += [i for i in valid_data['keys']]
 
         if step >= args.num_validation_steps_per_epoch: 
             break
@@ -314,31 +292,11 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
     DSC_val=Config.Config.dice_metricVal.aggregate().item()
     # track validation metrics
     start_time = time.time()
-    valid_metrics = evaluate(y_det=iter(np.concatenate([x for x in np.array(all_valid_preds)], axis=0)),
-                             y_true=iter(np.concatenate([x for x in np.array(all_valid_labels)], axis=0)),
-                             subject_list=all_valid_keys,num_parallel_calls=args.max_num_threads,
-                             y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0])
     print(f"Time evaluation validation: {int(time.time()-start_time)} sec", flush=True)
-
-    num_pos = int(np.sum([np.max(y) for y in np.concatenate(
-        [x for x in np.array(all_valid_labels)], axis=0)]))
-    num_neg = int(len(np.concatenate([x for x in
-                                      np.array(all_valid_labels)], axis=0)) - num_pos)
 
     tracking_metrics['all_epochs'].append(epoch+1)
     tracking_metrics['all_train_loss'].append(tracking_metrics['train_loss'])
     
-    tracking_metrics['all_valid_metrics_auroc'].append(valid_metrics.auroc)
-    tracking_metrics['all_valid_metrics_FPR'].append(valid_metrics.calculate_ROC()['FPR'])
-    tracking_metrics['all_valid_metrics_TPR'].append(valid_metrics.calculate_ROC()['TPR'])
-    tracking_metrics['all_valid_metrics_BestROC_THR'].append(valid_metrics.calculate_ROC()['Best_THR'])
-
-    tracking_metrics['all_valid_metrics_ap'].append(valid_metrics.AP)
-    tracking_metrics['all_valid_metrics_precision'].append(valid_metrics.calculate_precision_recall()['precision'])
-    tracking_metrics['all_valid_metrics_recall'].append(valid_metrics.calculate_precision_recall()['recall'])
-    tracking_metrics['all_valid_metrics_BestPR_THR'].append(valid_metrics.calculate_precision_recall()['Best_THR'])
-    
-    tracking_metrics['all_valid_metrics_ranking'].append(valid_metrics.score)
     tracking_metrics['all_valid_loss'].append(val_loss/step)
     tracking_metrics['all_valid_metrics_Dice'].append(DSC_val)
 
@@ -347,15 +305,8 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
     metricsData = pd.DataFrame(list(zip(tracking_metrics['all_epochs'],
                                         tracking_metrics['all_train_loss'],
                                         tracking_metrics['all_valid_loss'],
-                                        tracking_metrics['all_valid_metrics_auroc'],
-                                        tracking_metrics['all_valid_metrics_BestROC_THR'],
-                                        tracking_metrics['all_valid_metrics_ap'],
-                                        tracking_metrics['all_valid_metrics_BestPR_THR'],
-                                        tracking_metrics['all_valid_metrics_ranking'],
                                         tracking_metrics['all_valid_metrics_Dice'])),
-                               columns=['epoch', 'train_loss','valid_loss','valid_auroc',
-                                        'valid_BestROC_THR', 'valid_ap',
-                                        'valid_BestPR_THR','valid_ranking','valid_Dice'])
+                               columns=['epoch', 'train_loss','valid_loss','valid_Dice'])
 
     # create target folder and save exports sheet
     metrics_file = Path(args.out_dir) / "metrics.xlsx"
@@ -365,37 +316,22 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
     if  args.enable_wandb:
         #pred_notumor=1-np.array(list(valid_metrics.case_pred.values()))
         #prediction=np.stack((pred_notumor,np.array(list(valid_metrics.case_pred.values()))),axis=-1)      
-        wandb_logger.log({"val_loss":tracking_metrics['all_valid_loss'][-1],
-                          "valid_auroc":valid_metrics.auroc,
-                          "valid_ap":valid_metrics.AP,
-                          "valid_dice":DSC_val,
-                          "valid_ranking":valid_metrics.score,
-                          "roc" : wandb.plot.roc_curve([valid_metrics.case_target[s] for s in valid_metrics.subject_list],
-                                                        [[1-valid_metrics.case_pred[s],valid_metrics.case_pred[s]] for s in valid_metrics.subject_list],
-                                                        labels=['Benign','Malign'],classes_to_plot=1,
-                                                         title='ROC Val'),
-                          "pr":wandb.plot.pr_curve([valid_metrics.case_target[s] for s in valid_metrics.subject_list], 
-                                                   [[1-valid_metrics.case_pred[s],valid_metrics.case_pred[s]] for s in valid_metrics.subject_list],
-                                                   labels=['Benign','Malign'],classes_to_plot=1,
-                                                   title='Precision vs Recall Val')}) 
+        wandb_logger.log({"val/loss":tracking_metrics['all_valid_loss'][-1],
+                          "val/dice":DSC_val})
 
-    print(f"Valid. Performance [Benign or Indolent PCa (n={num_neg}) \
-        vs. csPCa (n={num_pos})]:\nRanking Score = {valid_metrics.score:.3f},\
-        AP = {valid_metrics.AP:.3f}, AUROC = {valid_metrics.auroc:.3f}, \
-        DSC = {DSC_val:.5f}, Validation Score = {(valid_metrics.score+DSC_val)/2:.5f}", flush=True)
+
+    print(f"Valid. Performance DSC = {DSC_val:.5f}, Validation Loss = {tracking_metrics['all_valid_loss'][-1]:.5f}", flush=True)
     
     Config.Config.dice_metricVal.reset()
 
     # store model checkpoint if validation metric improves
-    if valid_metrics.score >(valid_metrics.score+DSC_val)/2:#valid_metrics.score > tracking_metrics['best_metric']:
-        tracking_metrics['best_metric'] = (valid_metrics.score+(DSC_val))/2 #val_dice[-1]#valid_metrics.score#val_dice/step #valid_metrics.score
+    if tracking_metrics['all_valid_metrics_Dice'][-1] > tracking_metrics['best_metric']:
+        tracking_metrics['best_metric'] = DSC_val #val_dice[-1]#valid_metrics.score#val_dice/step #valid_metrics.score
         tracking_metrics['best_metric_epoch'] = epoch + 1
         
         weights_file = Path(args.expr_dir) / "BestCHK.pth"
 
-        print(f"Validation Score Improved! Saving New Best Model -> new best score:{tracking_metrics['best_metric']:.3f}, \
-              new best Ranking Score:{valid_metrics.score:.3f}, \
-               new best DSC:{tracking_metrics['all_valid_metrics_Dice'][-1]:.3f}", 
+        print(f"Validation Score Improved! Saving New Best Model -> new best DSC:{tracking_metrics['all_valid_metrics_Dice'][-1]:.3f}", 
               flush=True)# ranking score before change to dice
         torch.save({
                 'epoch': epoch,
@@ -414,7 +350,7 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
             }, weights_filelast)
 
 
-    return model, optimizer, valid_gen, tracking_metrics,wandb_logger,valid_metrics
+    return model, optimizer, valid_gen, tracking_metrics,wandb_logger
 
 #######################TEST FOR PICAI#########################################""""
 def test_Predict_Rank(model,opt,test_loader,datalen):

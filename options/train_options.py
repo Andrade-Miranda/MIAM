@@ -126,7 +126,7 @@ class TrainOptions(BaseOptions):
 
 ####################OPTION FOR LOSS function###################################""""
         self.parser.add_argument('--loss_option', type=str, default="DiceFocalLoss", help='choose loss function')        
-        self.parser.add_argument('--lambda_Loss', type=str, default=['1 1'], help='lambda for compose loss, vector represented the weight of the loss')
+        self.parser.add_argument('--lambda_Loss', type=float, nargs='+', default=[1,1], help='lambda for compose loss, vector represented the weight of the loss')
 
 ####################OPTION AVAILABLE only with config contrastive###################################""""        
         self.parser.add_argument('--lambdaCNN', type=float, default=1e-1, help='lambda contrastive CNN')
