@@ -51,9 +51,16 @@ class BaseOptions():
         self.parser.add_argument('--output_dir', type=str, default=None, help='save test segmentatio output results here, default is None meaning that files will save in ./Output/TaskName')
         self.parser.add_argument('--.', type=int, default=0, help='custom_sub_dir')
 
-        # models
+        # models segmentation
         self.parser.add_argument('--encoder', type=str, default='MCNN_h+VIT_n',help='chooses encoder to use CNN_h+VIT_n, CNN_l+VIT_n,MCNN_{h,l}+VIT_{n,s,m}')        
         self.initialized = True
+
+        # models priors --- parameters only for PRIORS
+        self.parser.add_argument('--enc_arch', type=str, default='ViTBackbone',help='chooses decoder to use')
+        self.parser.add_argument('--dec_arch', type=str, default='UNETR_decoder',help='chooses decoder to use')  
+        self.parser.add_argument('--mask_in_chans', type=int, default=16, help='embedding number for mask prior added to latent space')
+        self.parser.add_argument('--prompt_embed_dim', type=int, default=256, help='embedding number for mask prior added to latent space')
+        self.parser.add_argument('--input_prior', nargs='+', default=None, help='value to indicate the priors to be used (index of prior matrix) (default value None means not priors)')   
         
         #nnUnet setting
         self.parser.add_argument('--plan', type=str, default="nnUNetPlansv2.1_plans_3D.pkl",help='plan from NNunet-Preprocessing')        

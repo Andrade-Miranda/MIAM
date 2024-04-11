@@ -16,6 +16,7 @@ class TrainOptions(BaseOptions):
 
      # transformers setting   
         self.parser.add_argument('--patchSize', type=int, default=1, help='number of the patch for transformer network')
+        self.parser.add_argument('--feature_size', type=int, default=16, help='number of features for UNETR value 16 or 32')
         self.parser.add_argument('--hidden_size', type=int, default=768, help='dimension of the transformer hiddensize')
         self.parser.add_argument('--mlp_dim', type=int, default=3072, help='dimension of the transformer multilayer perceptron')
         self.parser.add_argument('--num_heads', type=int, default=12, help='number of head of each transformer block')
@@ -25,6 +26,8 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--pretrained', type=str, default=None, help='no use pretrained models')   
         self.parser.add_argument('--pretrained2d', dest='pretrained2d',action='store_true', default=False, help='When 2d pretraining are available')  
         self.parser.add_argument('--dropout_rate', type=float, default=0.0, help='dropout rate')   
+        self.parser.add_argument('--attn_drop_rate', type=float, default=0.0, help='attention dropout rate')   
+        self.parser.add_argument('--drop_path_rate', type=float, default=0.0, help='stochastic depth rate') 
         self.parser.add_argument('--Earlyfusion', type=str, default="Concatenation", help='type of early fusion')
     
     # CNN setting

@@ -901,7 +901,7 @@ class UNETRModel(nn.Module):
         in_channels=opt.input_nc
         out_channels= opt.output_nc
         img_size=opt.imageSize
-        feature_size=opt.patchSize
+        feature_size=opt.feature_size
         hidden_size=opt.hidden_size
         mlp_dim= opt.mlp_dim
         num_heads=opt.num_heads

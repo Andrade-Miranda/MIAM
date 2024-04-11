@@ -9,6 +9,40 @@ from monai.networks.blocks.dynunet_block import get_conv_layer,get_act_layer,get
 import numpy as np
 
 
+
+
+
+class LayerNorm3d(nn.Module):
+    def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(num_channels))
+        self.bias = nn.Parameter(torch.zeros(num_channels))
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        u = x.mean(1, keepdim=True)
+        s = (x - u).pow(2).mean(1, keepdim=True)
+        x = (x - u) / torch.sqrt(s + self.eps)
+        x = self.weight[:, None, None,None] * x + self.bias[:, None, None,None]
+        return x
+
+class LayerNorm2d(nn.Module):
+    def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(num_channels))
+        self.bias = nn.Parameter(torch.zeros(num_channels))
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        u = x.mean(1, keepdim=True)
+        s = (x - u).pow(2).mean(1, keepdim=True)
+        x = (x - u) / torch.sqrt(s + self.eps)
+        x = self.weight[:, None, None] * x + self.bias[:, None, None]
+        return x
+
+
+
+
 ######FUSION AFTER VIT interaction#################################"
 class FusedGatedUnit(nn.Module):
     def __init__(self, input_dimension, output_dimension):
@@ -571,6 +605,11 @@ class OutConv(nn.Module):
     
 def up_sample2d(x, t, mode="bilinear"):
     ''' 2D up-sampling '''
+    
+    return functional.interpolate(x, t.size()[2:], mode=mode, align_corners=False)
+
+def up_sample3d(x, t, mode="trilinear"):
+    ''' 3D up-sampling '''
     
     return functional.interpolate(x, t.size()[2:], mode=mode, align_corners=False)
 

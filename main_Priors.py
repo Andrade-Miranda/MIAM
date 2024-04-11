@@ -5,7 +5,7 @@ import random
 from options.train_options import TrainOptions
 from data.data_loader import CreateDataLoader
 from config.train_setup import TrainSetup
-from models.models import create_model
+from models.models_Priors import create_model
 from util.enginePrior import optimize_model,validate_model,test_Predict_Rank
 
 from monai.utils import set_determinism
@@ -91,8 +91,9 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
                 wandb_logger=opt.wandb_logger,
                 Config=trainConfig,
                 )
+        Plots.save_Loss_Metrics(trainConfig.Config.tracking_metrics['all_train_loss'],trainConfig.Config.tracking_metrics['all_valid_loss'], trainConfig.Config.tracking_metrics['all_valid_metrics_Dice'], opt.val_interval)
 
-#test_Predict_Rank(model,opt,test_loader,datalen[1])# modify to perform test simultaniously or activate an option for only test
+test_Predict_Rank(model,opt,test_loader,datalen[1])# modify to perform test simultaniously or activate an option for only test
 
 print(
     f"Training Complete! Peak Validation Ranking Score: {trainConfig.Config.tracking_metrics['best_metric']:.4f} "
