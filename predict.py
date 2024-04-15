@@ -52,10 +52,10 @@ def main():
     "postprocessing using sigmoid(True) or softmax(False)")## in new version i will omit this option since it will be include in the training
     
     parser.add_argument("--postprocessing", dest='postprocessing', default=None, 
-                        required=False, help="option for postprocessing data")
+                        required=False, help="option for postprocessing data")# I have to specified the post-processing function applied to prediction and softmax
     
     parser.add_argument("--postpro_dir", dest='postpro_dir', default='/home/gustavo/Data/dataset/picai/dataset_test/picai_test/labels-WG', 
-                        required=False, help="directory of mask used for postprocessing data")
+                        required=False, help="directory of mask used for postprocessing data, in case of using masking as postprocessing")
 
     parser.add_argument('--chkname',
                         help='checkpoint extension, only available for one chk for folder',
@@ -63,7 +63,7 @@ def main():
                         default='BestCHK.pth')
     
     parser.add_argument('--Only_enable_evaluation',action='store_true', dest='Only_enable_evaluation', default=False,
-                    help="enable only evaluation setup")
+                    help="enable only evaluation setup, not change ")
 
     # Weights and Biases arguments
     parser.add_argument('--enable_wandb',action='store_true', dest='enable_wandb', default=False,
@@ -82,7 +82,8 @@ def main():
     output_fold_prediction='predictions' #folder to save prediction
 
     encoder = args.model.split('__')[0] # take only the model name (UNETR, Swin, etc)
-    mode=args.mode
+    mode=args.mode # if I use mean ensemble i have to specified  load all the folds
+    
 
     modelname=[args.model+'F'+str(args.Nfolds[i]) for i in range(len(args.Nfolds))]
     args.checkpoints_dir = [join('./checkpoints',args.task_name,encoder,modelname[i]) for i in range(len(args.Nfolds))]

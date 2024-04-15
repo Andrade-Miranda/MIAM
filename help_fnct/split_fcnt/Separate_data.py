@@ -9,18 +9,18 @@ import nibabel
 import argparse
 
 import sys
+import os
 # setting path
-sys.path.append('../util')
+sys.path.append('/home/gustavo/Code/Git_workspace/MIAM/help_fnct/prepro_fcnt')# to check
 import preProcessing as PP
 
-import os
 
 
 def initialize():
     parser = argparse.ArgumentParser(description='Options')
-    parser.add_argument('--dataroot',type=str, default='/home/gustavo/Code/CNNTrans/datasets/Hektor2021', help='path to .nii images 3D')
-    parser.add_argument('--datasave', type=str, default='/home/gustavo/nnUNet/data/nnUnet_raw/nnUNet_raw_data/Task500_Hektor', help='stores the modalities concatenation') 
-    parser.add_argument('--modal', type=str, default='ct-pt-gtvt', help='the modalities to read, seg has to be the last one') 
+    parser.add_argument('--dataroot',type=str, default='/home/gustavo/Data/dataset/ProstateDATA/Multireader_NIFTI_crop', help='path to .nii images 3D')
+    parser.add_argument('--datasave', type=str, default='/home/gustavo/Code/Git_workspace/MIAM/nnUNet/data/nnUnet_raw/nnUNet_raw_data/Task2203_Prostate_multireader', help='stores the modalities concatenation') 
+    parser.add_argument('--modal', type=str, default='T2-Prostate_ES', help='the modalities to read, seg has to be the last one') 
     parser.add_argument('--option', type=str, default='Train', help='specify the data to convert') 
     parser.add_argument('--extension', type=str, default='.nii.gz', help='file extension')
     parser.add_argument('--selectedIds', dest='selectedIds',action='store_true',default=False, help='Take only parts of the patient depending of rate')
@@ -80,11 +80,11 @@ if __name__=='__main__':
     position=0
     for id_ in idsPatients:
         # initialize list of data
-        pProcess.exam_upload(id_)
-        modal_normal,segmentation=pProcess.extractModal(id_)
+        pProcess.exam_uploadVProstate(id_,position)
+        #modal_normal,segmentation=pProcess.extractModal(id_)
         # save data in the correct folders
-        nibabel.save(modal_normal,os.path.join(images,id_[1]+'_'+id_[0]+pProcess.extension))
-        nibabel.save(segmentation,os.path.join(labels,id_[1]+'_'+id_[0]+pProcess.extension))
+        #nibabel.save(modal_normal,os.path.join(images,id_[1]+'_'+id_[0]+pProcess.extension))
+        #nibabel.save(segmentation,os.path.join(labels,id_[1]+'_'+id_[0]+pProcess.extension))
         position+=1
 
     

@@ -9,11 +9,11 @@ Created on Thu Sep 23 14:33:36 2021
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
+import shutil
 import sys
 # setting path
 sys.path.append('./util')
-from util import normalization_imgs
+#from util import normalization_imgs
 
 import nibabel
 import logging
@@ -45,7 +45,8 @@ class preProcessing():
         self.data=[]
         for fname in os.listdir(self.dataroot):
             if not fname.startswith('.') and not fname.endswith('csv'):
-                self.data.append((self.getNumbers(fname)[2],fname.split('_')[0]))#depend of the dataset, choose id after two _
+                #self.data.append((self.getNumbers(fname)[2],fname.split('_')[0]))#depend of the dataset, choose id after two _
+                self.data.append(fname)#depend of the dataset, choose id after two _
                 #self.folderNew.append(fname.split('_')[0])#use 1 if 'Hektor2021-CHUS007' else 0 Hektor2021
                 # if dummy:
                 #     assert(folderOld not in self.folderNew)
@@ -66,6 +67,36 @@ class preProcessing():
             if modal_name==self.modal[-1]:
                 self.patients[id_[0]]=data
                 data=[]
+
+    def exam_uploadVProstate(self,id_,position): # modality = T2, T1, Fa, MR or CT
+        folder=id_
+        path_patientFolder=os.path.join(self.dataroot,folder)
+        countModal=0
+        listaPerPatient=os.listdir(path_patientFolder)
+        listaPerPatient.sort()
+        for fname in listaPerPatient:
+            src_path=os.path.join(path_patientFolder,fname)
+            if id_ in fname:
+                for modality in self.modal[:-1]:
+                    if modality in fname:
+                        dest_path=os.path.join(self.datasave,'imagesTr')
+                        new_name=id_+'_'+str(position).zfill(5)+'_'+str(countModal).zfill(4)+self.extension
+                        countModal+=1
+                        self.copy_and_rename(src_path, dest_path, new_name)
+            elif "mask_" in fname:
+                if self.modal[-1] in fname:
+                    dest_path=os.path.join(self.datasave,'labelsTr')
+                    new_name=id_+'_'+str(position).zfill(5)+self.extension
+                    self.copy_and_rename(src_path, dest_path, new_name)
+            else:
+                continue
+            
+    def copy_and_rename(self,src_path, dest_path, new_name):
+        # Copy the file
+        shutil.copy(src_path, dest_path)
+        # Rename the copied file
+        new_path = f"{dest_path}/{new_name}"
+        shutil.move(f"{dest_path}/{src_path.split('/')[-1]}", new_path)
 
         
     def normalize(self,crop=True,roi_size=[128,128,128]):

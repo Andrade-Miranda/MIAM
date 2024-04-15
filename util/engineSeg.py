@@ -186,45 +186,25 @@ def optimize_model(model, optimizer, loss_func,scaler,lr_scheduler, train_gen, a
         try:
             inputs = batch_data["image"].to(args.device, non_blocking=True)#image.to(device, non_blocking=True)
             labels = batch_data["label"].to(args.device, non_blocking=True)#label.to(device, non_blocking=True)
-            priors = batch_data["priors"].to(args.device, non_blocking=True)#label.to(device, non_blocking=True)
         except Exception:
             inputs = torch.from_numpy(batch_data['image']).to(args.device)
             labels = torch.from_numpy(batch_data['label']).to(args.device)
-            priors = torch.from_numpy(batch_data['priors']).to(args.device)
         trainingKeys.append(batch_data['keys'])
 
         if Debug:
             Debug.segment_thumbnails(image=inputs[0][0:1],label=labels[0],frame_dim=1,savepath=args.out_dir,FigName=trainingKeys[step-1][0])
-            Debug.segment_thumbnails(image=inputs[0][0:1],label=priors[0][1:2],frame_dim=1,savepath=args.out_dir,FigName=trainingKeys[step-1][0]+'Priors')
 
-        ####chose the prior channel to be used########
-        if args.input_prior:
-            remaining = [i for i in range(priors.shape[1]) if i in args.input_prior]
-            priors = priors[:, remaining]
-        ############################################
         if args.VAL_AMP:
             with torch.cuda.amp.autocast():
-                if args.input_prior:  ### check if I am using priors
-                    outputs = model(inputs,priors)
-                else:
-                    outputs = model(inputs)
-        else: # full precision
-            if args.input_prior:  
-                outputs = model(inputs,priors)
-            else:
                 outputs = model(inputs)
+        else: # full precision
+            outputs = model(inputs)
+
         loss = loss_func(outputs, labels)   
         train_loss += loss.item()
         ##############################################
 
-        if 'Focal' in args.loss_option:
-            ####THIS IS ONLY FOR PICAI
-            labels_ = F.one_hot(labels[:, -1, ...].long(), num_classes=args.output_nc).float()
-            labels_ = torch.moveaxis(labels_, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
-            ################
-            Config.Config.dice_metricTrain(Config.Config.post_trans(outputs),labels_)
-        else:
-            Config.Config.dice_metricTrain(Config.Config.post_trans(outputs),labels)
+        Config.Config.dice_metricTrain(Config.Config.post_trans(outputs),labels)
 
         # backpropagate + optimize
         optimizer.zero_grad()
@@ -285,12 +265,11 @@ def validate_model(model, loss_func,optimizer, valid_gen, args, tracking_metrics
         valloss = loss_func(outputs, valid_labels)# tomo el zero para poder hacer one-hot
         val_loss += valloss.item()
 
-        if 'Focal' in args.loss_option:
+        if 'PICAI' in args.TrainConfig:
             ####THIS IS ONLY FOR PICAI
-            labels_ = F.one_hot(valid_labels[:, -1, ...].long(), num_classes=2).float()
-            labels_ = torch.moveaxis(labels_, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
+            labels = F.one_hot(valid_labels[:, -1, ...].long(), num_classes=2).float()
+            labels = torch.moveaxis(labels, (0, 1, 2, 3, 4), (0, 2, 3, 4, 1))
             #######
-            Config.Config.dice_metricVal(Config.Config.post_trans(outputs),labels_)
         else:
             Config.Config.dice_metricVal(Config.Config.post_trans(outputs),valid_labels)
 
@@ -373,7 +352,6 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
     output_folder = join('./Output/',opt.dataroot,opt.encoder,opt.name,'predictions')
     output_folder_softmax = join('./Output/',opt.dataroot,opt.encoder,opt.name,'Softmax')
     opt.input_folder= join("./nnUNet/data/nnUnet_raw/nnUNet_raw_data",opt.dataroot,"imagesTr")
-    
     maybe_mkdir_p(output_folder)
     maybe_mkdir_p(output_folder_softmax)
     ######################################
@@ -397,11 +375,11 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
     with torch.no_grad():#Context-manager that disabled gradient calculation.
 
         opt.outputSoft_dir=output_folder_softmax # only to specify output directory
-        createPlots=Picai_ResultsPlots(opt,opt.wandb_logger)
 
         for preprocessed in test_loader:
 
             val_inputs = preprocessed["image"].to(opt.device, non_blocking=True)
+            val_labels = preprocessed["label"].to(opt.device, non_blocking=True)
             out_fname = preprocessed["keys"].item()
             dct=preprocessed["properties"][0]
 

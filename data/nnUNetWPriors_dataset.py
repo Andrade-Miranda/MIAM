@@ -48,6 +48,7 @@ from nnUNet.nnunet.training.data_augmentation.pyramid_augmentations import MoveS
     RemoveRandomConnectedComponentFromOneHotEncodingTransform
 
 from nnUNet.nnunet.training.dataloading.custom_datasets.dataset_loadingPriors import DataLoader3D, load_dataset
+from nnUNet.nnunet.training.dataloading.dataset_loading import DataLoader3D as DatalodaderVAL
 from util.dataset_Testloading import DataLoaderTest3D
 
 import pickle
@@ -66,9 +67,11 @@ class nnUNetWPriorsDataset(BaseDataset):
         
         self.opt=opt
         self.default_3D_augmentation_params = {
-            "AppendChannelsTransform": [0,1],#  modify to be automatic loading properties
+            #  modify to be automatic loading properties - setting for move and remove channel on the train and validation settings
+            "AppendChannelsTransform": [0,1],
             "CopyChannelsTransform": [1,2],
-
+            "Remove_ChannelsTransform": [3,4],
+            ####################################
             "selected_data_channels": None,
             "selected_seg_channels": None,
 
@@ -278,9 +281,10 @@ class nnUNetWPriorsDataset(BaseDataset):
             val_transforms.append(DataChannelSelectionTransform(params.get("selected_data_channels")))
         if params.get("selected_seg_channels") is not None:
             val_transforms.append(SegChannelSelectionTransform(params.get("selected_seg_channels")))
-
-        if params.get("move_last_seg_chanel_to_data") is not None and params.get("move_last_seg_chanel_to_data"):
-            val_transforms.append(MoveSegAsOneHotToData(1, params.get("all_segmentation_labels"), 'seg', 'data'))
+        
+        ##remove extra channels comming from priors - only process data and seg ##############""
+        val_transforms.append(RemoveChannelsTransform('data',params.get("Remove_ChannelsTransform")))
+        #############################################
 
         val_transforms.append(RenameTransform('seg', 'label', True))
         val_transforms.append(RenameTransform('data', 'image', True))
@@ -289,10 +293,9 @@ class nnUNetWPriorsDataset(BaseDataset):
             val_transforms.append(ConvertSegmentationToRegionsTransform(regions, 'label', 'label'))
             #val_transforms.append(ConvertSegToRegionsTransform(regions,keys="label"))
 
-        val_transforms.append(NumpyToTensor(['image', 'label','priors'], 'float'))
+        val_transforms.append(NumpyToTensor(['image', 'label'], 'float'))
         val_transforms = Compose(val_transforms)
 
-        batchgenerator_test = DataLoaderTest3D(self.dataset_val,val_transforms,1)
         if self.opt.Deterministic:
             seeds=self.seeds_val[:int(max(params.get('num_threads') // 2, 1))]
         else:
@@ -300,6 +303,8 @@ class nnUNetWPriorsDataset(BaseDataset):
         batchgenerator_val = MultiThreadedAugmenter(dataloader_val, val_transforms, max(params.get('num_threads') // 2, 1),
                                                    params.get("num_cached_per_thread"), seeds=seeds,
                                                     pin_memory=pin_memory)
+        
+        batchgenerator_test = DataLoaderTest3D(self.dataset_val,val_transforms,1)
 
         
         return batchgenerator_train, batchgenerator_val,batchgenerator_test
@@ -390,7 +395,7 @@ class nnUNetWPriorsDataset(BaseDataset):
                              False, oversample_foreground_percent=self.oversample_foreground_percent,
                              pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
         
-        dl_val = DataLoader3D(self.dataset_val, np.array(self.opt.imageSize).astype(int), np.array(self.opt.imageSize).astype(int), self.opt.Val_batchSize, 
+        dl_val = DatalodaderVAL(self.dataset_val, np.array(self.opt.imageSize).astype(int), np.array(self.opt.imageSize).astype(int), self.opt.Val_batchSize, 
                               False,oversample_foreground_percent=self.oversample_foreground_percent,
                               pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
         
@@ -475,5 +480,32 @@ class CopyChannelsTransform(AbstractTransform):
             remaining = [i for i in range(inp.shape[1]) if i not in self.channel_indexes]
             inp = inp[:, remaining]
             data_dict[self.input_key] = inp
+
+        return data_dict
+    
+
+
+class RemoveChannelsTransform(AbstractTransform):
+    def __init__(self, input_key, channel_indexes):
+        """
+        Moves channels specified by channel_indexes from input_key in data_dict to output_key (by appending in the
+        order specified in channel_indexes). The channels will be removed from input if remove_from_input is True
+        :param input_key:
+        :param output_key:
+        :param channel_indexes: must be tuple or list
+        :param remove_from_input:
+        """
+        self.channel_indexes = channel_indexes
+        self.input_key = input_key
+        assert isinstance(self.channel_indexes, (tuple, list)), "channel_indexes must be either tuple or list of int"
+
+    def __call__(self, **data_dict):
+        inp = data_dict.get(self.input_key)
+
+        assert inp is not None, "input_key %s is not present in data_dict" % self.input_key
+
+        remaining = [i for i in range(inp.shape[1]) if i not in self.channel_indexes]
+        inp = inp[:, remaining]
+        data_dict[self.input_key] = inp
 
         return data_dict

@@ -30,12 +30,12 @@ class FakeDict(dict):
 
 def initialize():
     parser = argparse.ArgumentParser(description='Options')
-    parser.add_argument('--root_dir',type=str, default='/home/gustavo/nnUNet/data/nnUnet_raw/nnUNet_raw_data/Task500_Hektor', help='root directory')
-    parser.add_argument('--name',type=str, default='Hektor2021', help='dataset name')
-    parser.add_argument('--description', type=str, default='Hektor dataset CT and PET', help='dataset description') 
+    parser.add_argument('--root_dir',type=str, default='/home/gustavo/nnUNet/data/nnUnet_raw/nnUNet_raw_data/Task2203_Prostate_multireader', help='root directory')
+    parser.add_argument('--name',type=str, default='Task2203_Prostate_multireader', help='dataset name')
+    parser.add_argument('--description', type=str, default='Prostate multireader dataset only T2', help='dataset description') 
     parser.add_argument('--tensorImageSize', type=str, default='4D', help='Image size') 
-    parser.add_argument('--modality', type=str, default='ct-pt', help='0 represent patient id') #flair-t1-t1ce-t2
-    parser.add_argument('--labels', type=str, default='Tumor', help='0 represent patient id') #TC-WT-ET
+    parser.add_argument('--modality', type=str, default='T2', help='0 represent patient id') #flair-t1-t1ce-t2
+    parser.add_argument('--labels', type=str, default='Prostate', help='0 represent patient id') #TC-WT-ET
     parser.add_argument('--option', type=int, default='0', help='0 only train, 1 train and val, 2 train and test') 
     
     return parser

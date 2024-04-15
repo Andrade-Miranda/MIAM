@@ -6,10 +6,16 @@ def CreateTrainConfig(opt,model):
     if opt.TrainConfig == 'BaseConfig':#for training setup
         from config.Base_Config import BaseConfig
         Config = BaseConfig()
+    elif opt.TrainConfig == 'DefaultConfig':#####################default  segmentation training setup
+        from config.Default_Config import DefaultConfig
+        Config = DefaultConfig()
     elif opt.TrainConfig == 'TIMMConfig':#for training using TIMM library
         from config.TIMM_Config import TIMMConfig
         Config = TIMMConfig()
-    elif opt.TrainConfig == 'PRIORSConfig':#configuration for Priors mask
+    elif opt.TrainConfig == 'PICAIConfig':##############################configuration for Priors mask
+        from config.PICAI_Config import PICAIConfig
+        Config = PICAIConfig()
+    elif opt.TrainConfig == 'PRIORSConfig':##############################configuration for PICAI challenge same as PRIOR
         from config.PRIORS_Config import PRIORSConfig
         Config = PRIORSConfig()
     elif opt.TrainConfig == 'AMOSConfig':# COnfig AMOS challenge
@@ -21,13 +27,13 @@ def CreateTrainConfig(opt,model):
     elif opt.TrainConfig == 'TransFuseConfig':#for methods based on parallel transformer and CNN
         from config.TransFuse_Config import TransFuseConfig
         Config = TransFuseConfig()
-    elif opt.TrainConfig == 'nnUNetConfig': #nnUNEt setup
+    elif opt.TrainConfig == 'nnUNetConfig': ###################################nnUNEt setup by default
         from config.nnUNet_Config import nnUNetConfig
         Config = nnUNetConfig() 
-    elif opt.TrainConfig == 'TestConfig':#for test setup
+    elif opt.TrainConfig == 'TestConfig':#####################################for testing setup
         from config.Test_Config import TestConfig
         Config = TestConfig()   
-    elif opt.TrainConfig == 'Test_ConfigBrats':#for test setup
+    elif opt.TrainConfig == 'Test_ConfigBrats':#for test brats setup
         from config.Test_ConfigBrats import TestConfig
         Config = TestConfig()  
     else:

@@ -17,7 +17,7 @@ from omegaconf import OmegaConf
 
 class BaseOptions():
     def __init__(self):
-        self.parser = argparse.ArgumentParser()
+        self.parser = argparse.ArgumentParser(description='Framework for automatic segmentation')
         self.initialized = False
 
     def initialize(self):

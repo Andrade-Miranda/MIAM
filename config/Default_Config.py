@@ -25,44 +25,16 @@ from monai.transforms import (
         Compose
         )
 
-class PRIORSConfig():
+class DefaultConfig():
     
     def initialize(self, opt,model):
         self.opt=opt
         self.model=model
 
-        # use case-level class balance to deduce required train-time class weights
-        # load datasheets
-        with open(Path("./nnUNet/data/nnUnet_raw/results/overviews/"+self.opt.dataroot) / f'PI-CAI_train-fold-{self.opt.fold}.json') as fp:
-            train_json = json.load(fp)
-        with open(Path("./nnUNet/data/nnUnet_raw/results/overviews/"+self.opt.dataroot) / f'PI-CAI_val-fold-{self.opt.fold}.json') as fp:
-            valid_json = json.load(fp)
-        
-        # load paths to images and labels
-        train_data = [np.array(train_json['image_paths']), np.array(train_json['label_paths'])]
-        valid_data = [np.array(valid_json['image_paths']), np.array(valid_json['label_paths'])]
-        #if self.opt.output_nc<=2:
-        self.class_ratio_t = [int(np.sum(train_json['case_label'])), int(len(train_data[0])-np.sum(train_json['case_label']))]
-        self.class_ratio_v = [int(np.sum(valid_json['case_label'])), int(len(valid_data[0])-np.sum(valid_json['case_label']))]
-        self.class_weights = (self.class_ratio_t / np.sum(self.class_ratio_t))
-        #else:
-        #    self.class_ratio_t = [int(np.sum(train_json['case_label']))//2, int(len(train_data[0])-np.sum(train_json['case_label'])//2)]
-        #    self.class_ratio_v = [int(np.sum(valid_json['case_label']))//2, int(len(valid_data[0])-np.sum(valid_json['case_label'])//2)]
-        #    self.class_weights = (self.class_ratio_t / np.sum(self.class_ratio_t))
-
-        # log dataset definition
-        print('Dataset Definition:', "-"*80)
-        print(f'Fold Number: {self.opt.fold}')
-        print('Data Classes:', list(range(self.opt.output_nc)))
-        print(f'Train-Time Class Weights: {self.class_weights}')
-        print(f'Training Samples [-:{self.class_ratio_t[1]};+:{self.class_ratio_t[0]}]: {len(train_data[1])}')
-        print(f'Validation Samples [-:{self.class_ratio_v[1]};+:{self.class_ratio_v[0]}]: {len(valid_data[1])}')
-
-
         self.LoadConfig()
     
     def name(self):
-        return "Priors config"
+        return "Default config"
     
     
     def LoadConfig(self):
@@ -81,7 +53,7 @@ class PRIORSConfig():
             self.loss_function = FL_and_CE_loss(fl_kwargs={'alpha':self.class_weights[-1],'size_average':False},
                                                ce_kwargs={'reduction': 'sum'},alpha=self.opt.lambda_Loss[0]).to(self.opt.device)#alpha represent the weight for each loss
         elif self.opt.loss_option=='FocalLossbin':
-            self.loss_function=FocalLossBin(alpha=self.class_weights[0]).to(self.opt.device)
+            self.loss_function=FocalLossBin(alpha=self.class_weights[-1]).to(self.opt.device)
         elif self.opt.loss_option=='FocalLoss':
             self.loss_function = FocalLoss(include_background=True,  # only two classes and keep the same weight as before 
                                         to_onehot_y=False, 
@@ -142,7 +114,7 @@ class PRIORSConfig():
                 [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
             )
         elif not self.opt.sigmoid and self.opt.output_nc>1:
-            self.post_trans = Compose([Activations(softmax=True), AsDiscrete(argmax=True)]) 
+            self.post_trans = Compose([Activations(softmax=True), AsDiscrete(argmax=True,to_onehot=self.opt.output_nc)]) 
 
         #metrics
         self.dice_metricTrain = DiceMetric(include_background=True, reduction="mean")

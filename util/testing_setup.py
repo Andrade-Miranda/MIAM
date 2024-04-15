@@ -999,7 +999,7 @@ def save_segmentation_nifti_softmax(segmentation_softmax, out_fname,
         seg_old_spacing = segmentation_softmax
 
     if resampled_npz_fname is not None:
-        np.savez_compressed(resampled_npz_fname, softmax=seg_old_spacing.astype(np.float16))
+        np.savez_compressed(resampled_npz_fname, softmax=seg_old_spacing.astype(float))#np.float16
         # this is needed for ensembling if the nonlinearity is sigmoid
         if region_class_order is not None:
             properties_dict['regions_class_order'] = region_class_order
@@ -1038,7 +1038,7 @@ def save_segmentation_nifti_softmax(segmentation_softmax, out_fname,
         seg_old_size_postprocessed = seg_old_size
 
 
-    seg_resized_itk = sitk.GetImageFromArray(seg_old_size_postprocessed.astype(np.float))
+    seg_resized_itk = sitk.GetImageFromArray(seg_old_size_postprocessed.astype(float))#np.float
     seg_resized_itk.SetSpacing(properties_dict['itk_spacing'])
     seg_resized_itk.SetOrigin(properties_dict['itk_origin'])
     seg_resized_itk.SetDirection(properties_dict['itk_direction'])
