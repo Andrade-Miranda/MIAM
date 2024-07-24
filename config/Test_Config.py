@@ -10,7 +10,6 @@ from monai.inferers import sliding_window_inference
 from monai.metrics import DiceMetric,ConfusionMatrixMetric,HausdorffDistanceMetric,SurfaceDistanceMetric
 from util.postprocessing import Picai_Postprocessing
 
-
 from monai.transforms import (
         Activations,
         AsDiscrete,
@@ -49,25 +48,26 @@ class TestConfig():
         
 
     # define inference method
-    def inference(self,input):
-        def _compute(input):
+    def inference(self,input,DeppSuper):
+        def _compute(input,DeppSuper=False):
             return sliding_window_inference(
                 inputs=input,
                 roi_size=self.opt.imageSize,
                 sw_batch_size=self.opt.Val_batchSize,
                 predictor=self.model,
+                DeppSuper=DeppSuper,
                 overlap=0.5,
                 mode='gaussian'
                 )
         if self.opt.VAL_AMP:
             with torch.cuda.amp.autocast():
-                return _compute(input)
+                return _compute(input,DeppSuper=False)
         else:
-            return _compute(input)
+            return _compute(input,DeppSuper=False)
         
     def postprocessing(self,input,mask):
         def _computePostpro(input,mask):
-            if self.opt.postprocessing =='Picai_Postprocessing':
+            if self.opt.postprocessing == 'Picai_Postprocessing':
                 return Picai_Postprocessing(
                     input=input,
                     prostateMask=mask,
@@ -75,6 +75,7 @@ class TestConfig():
                 )
             else:
                 self.opt.postprocessing=None
+
         return _computePostpro(input,mask)
 
     def name(self):

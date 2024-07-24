@@ -8,7 +8,7 @@ from torchvision import models
 from util import block
 from monai.networks.nets import UNETR,SegResNet,UNet,SwinUNETR
 from util.util import print_network
-
+import os
 
 ###############################################################################
 # Helper Functions
@@ -956,8 +956,15 @@ class UNETRModel(nn.Module):
         print_network(model)
         print('#model created')
         """---------------------"""
-        if not('Test' in self.opt.TrainConfig):
+        if self.opt.pretrained:
+            if isinstance(self.opt.pretrained, str):
+                model.load_state_dict(torch.load(self.opt.pretrained,map_location=self.opt.device),strict=False)
+                print('initialize network with pretained weights %s' % self.opt.pretrained)
+            else:
+                raise TypeError('pretrained must be a str or None')
+        else:
             model=init_weights(model, init_type, init_gain=init_gain)
+        
         return model
     """--------------------------------------------------------------------""" 
 

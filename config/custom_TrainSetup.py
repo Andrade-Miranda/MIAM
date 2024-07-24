@@ -27,7 +27,7 @@ def CreateTrainConfig(opt,model):
     elif opt.TrainConfig == 'TransFuseConfig':#for methods based on parallel transformer and CNN
         from config.TransFuse_Config import TransFuseConfig
         Config = TransFuseConfig()
-    elif opt.TrainConfig == 'nnUNetConfig': ###################################nnUNEt setup by default
+    elif opt.TrainConfig == 'nnUNetConfig': ###################################nnUNEt setup by default using same parameters and optimizer
         from config.nnUNet_Config import nnUNetConfig
         Config = nnUNetConfig() 
     elif opt.TrainConfig == 'TestConfig':#####################################for testing setup

@@ -6,10 +6,9 @@ from options.train_options import TrainOptions
 from data.data_loader import CreateDataLoader
 from config.train_setup import TrainSetup
 from models.models_Priors import create_model
-from util.enginePrior import optimize_model,validate_model,test_Predict_Rank
-
+from util.enginePrior import optimize_model,test_Predict_Rank
+from util.engine import validate_model
 from monai.utils import set_determinism
-
 
 ############# Load Options####################################################
 opt,root_dir,max_epochs,val_interval,Plots=TrainOptions().parse()
@@ -81,7 +80,7 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
         # validate model per N epochs + export model weights
         model.eval()
         with torch.no_grad():  # no gradient updates during validation
-            model, trainConfig.Config.optimizer, val_loader, trainConfig.Config.tracking_metrics,opt.wandb_logger = validate_model(
+            model, trainConfig.Config.optimizer, val_loader, trainConfig.Config.tracking_metrics,wandb_logger,valid_metrics = validate_model( #### I modify to use validation from engine.py check inputs and outputs
                 model=model, 
                 loss_func=trainConfig.Config.loss_function,
                 optimizer=trainConfig.Config.optimizer, 

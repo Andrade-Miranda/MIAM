@@ -17,7 +17,7 @@ import argparse
 from batchgenerators.utilities.file_and_folder_operations import join
 
 
-from util.testing_setup import load_trainingSetup,Mode_NCrossval,Mode_MeanEnsemb,Mode_MeanEnsembBrats,Mode_MCdropout
+from util.testing_setup import load_trainingSetup_yamlFile,Mode_NCrossval,Mode_MeanEnsemb,Mode_MeanEnsembBrats,Mode_MCdropout
 import os
 
 
@@ -104,7 +104,7 @@ def main():
     args.output_pred_dir=output_folder
     args.outputSoft_dir=output_folderSoftmax
 
-    opt= [load_trainingSetup(join(args.checkpoints_dir[i],'opt.txt'),args,i) for i in range(len(args.folds))]
+    opt= [load_trainingSetup_yamlFile(join(args.checkpoints_dir[i],'opt.yaml'),args,i) for i in range(len(args.folds))]
     [print("using model stored in ", args.checkpoints_dir[i]) for i in range(len(args.folds))]
    
     

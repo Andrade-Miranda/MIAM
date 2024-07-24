@@ -171,10 +171,27 @@ class LinearWarmupCosineAnnealingLR(_LRScheduler):
             for base_lr in self.base_lrs
         ]
 
-class poly_lr():
+class poly_lr(_LRScheduler):
     def __init__(self,opt):
         self.opt=opt
 
     def step(self,epoch, exponent=0.9):
         """Polynomial learning rate schedule"""
+        self.exponent=exponent
+        self.last_epoch=epoch
         return self.opt.lr * (1 - epoch / self.opt.epochs)**exponent
+    
+    #def state_dict(self):
+    #    return {'exponent':self.exponent,'epoch':self.epoch,'lr':self.opt.lr}
+
+class fix_lr(_LRScheduler):
+    def __init__(self,opt):
+        self.opt=opt
+
+    def step(self,epoch):
+        self.last_epoch=epoch
+        """Polynomial learning rate schedule"""
+        return self.opt.lr 
+    
+    #def state_dict(self):
+    #   return {'epoch':self.epoch,'lr':self.opt.lr}

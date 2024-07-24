@@ -79,6 +79,8 @@ def main():
                              "IDENTIFIER, the correct training command would be:\n"
                              "'nnUNet_train CONFIG TRAINER TASKID FOLD -p nnUNetPlans_pretrained_IDENTIFIER "
                              "-pretrained_weights FILENAME'")
+    parser.add_argument('--ISO_spacing',action='store_true', dest='ISO_spacing', default=False,
+                    help="enable logging to Weights and Biases")    
 
     args = parser.parse_args()
     task_ids = args.task_ids
@@ -87,6 +89,7 @@ def main():
     tf = args.tf
     planner_name3d = args.planner3d
     planner_name2d = args.planner2d
+    ISO_spacing=args.ISO_spacing
 
     if planner_name3d == "None":
         planner_name3d = None
@@ -169,7 +172,7 @@ def main():
                 exp_planner = planner_3d(cropped_out_dir, preprocessing_output_dir_this_task, args.overwrite_plans,
                                          args.overwrite_plans_identifier)
             else:
-                exp_planner = planner_3d(cropped_out_dir, preprocessing_output_dir_this_task)
+                exp_planner = planner_3d(cropped_out_dir, preprocessing_output_dir_this_task,ISO_spacing)
             exp_planner.plan_experiment()
             if not dont_run_preprocessing:  # double negative, yooo
                 exp_planner.run_preprocessing(threads)

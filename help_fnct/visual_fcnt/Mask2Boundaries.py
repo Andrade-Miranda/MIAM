@@ -30,6 +30,22 @@ def load_Nii(data,axis=0,slicAx=90):
             image_numpyImg.append(im)
 
     return image_numpyImg,nifti_loadedImg
+
+def load_Niiv2(data,axis=0,slicAx=90):
+    image_numpyImg=[]
+    for img in data:
+        nifti_loadedImg=nib.load(img)
+        if axis==0:
+            im=nifti_loadedImg.get_fdata()[slicAx,:,:]
+            image_numpyImg.append(im)
+        elif axis==1:
+            im=nifti_loadedImg.get_fdata()[:,slicAx,:]
+            image_numpyImg.append(im)
+        else:
+            im=np.fliplr(np.rot90(nifti_loadedImg.get_fdata()[:,:,slicAx], k=3, axes=(0, 1)))
+            image_numpyImg.append(im)
+
+    return image_numpyImg,nifti_loadedImg
         
 
 def drawContour(img,seg,color):
@@ -61,62 +77,83 @@ def boundaries(data,colors):
 
 
 
-
-
-
-
-
-
-
-
-
 models=dict()
 
-pathlabel='/home/gustavo/Code/Git_workspace/MIAM/nnUNet/data/nnUnet_raw/nnUNet_raw_data/Task003_HektorTest/labelsTr'
-pathimage='/home/gustavo/Code/Git_workspace/MIAM/nnUNet/data/nnUnet_raw/nnUNet_raw_data/Task003_HektorTest/imagesTr'
-hektorPath='/home/gustavo/Data/results/Hektor2021/predictions/FinalResults'
-outpath='/home/gustavo/Code/Git_workspace/Ranking/Figures/Paper_Ilustrations/hektor'
-NiftiHektor=['HektorTest2021-CHUP042_00014-59','HektorTest2021-CHUP048_00019-73',
-             'HektorTest2021-CHUP052_00023-93','HektorTest2021-CHUV027_00074-85']
+#pathlabel='/home/gustavo/Code/Git_workspace/MIAM/nnUNet/data/nnUnet_raw/nnUNet_raw_data/Task003_HektorTest/labelsTr'
+#pathimage='/home/gustavo/Code/Git_workspace/MIAM/nnUNet/data/nnUnet_raw/nnUNet_raw_data/Task003_HektorTest/imagesTr'
+#hektorPath='/home/gustavo/Data/results/Hektor2021/predictions/FinalResults'
+#outpath='/home/gustavo/Code/Git_workspace/Ranking/Figures/Paper_Ilustrations/hektor'
+#NiftiHektor=['HektorTest2021-CHUP042_00014-59','HektorTest2021-CHUP048_00019-73',
+#             'HektorTest2021-CHUP052_00023-93','HektorTest2021-CHUV027_00074-85']
+pathlabel='/home/gustavo/Downloads/images/test/label'
+pathimage='/home/gustavo/Downloads/images/test/images'
+hektorPath='/home/gustavo/Downloads/images/test/segmentation'
+outpath='/home/gustavo/Downloads/images/test/output'
+NiftiHektor=['10022_1000022.nii.gz','10103_1000103.nii.gz','20001_20001.nii.gz','20001_200011.nii.gz','20036_20036.nii.gz','20036_200361.nii.gz']
 
-Models={'MCNN_h+VIT_n_Ensemble':(0.34,0.829,0.86),'MCNN_h+VIT_s_Ensemble':(0.34,0.606,0.86),'MCNN_h+VIT_cv_Ensemble':(0.34,0.383,0.86),
-        'Unet_Ensemble':(0.86,0.371,0.34),'MCNN_h_Ensemble':(0.86,0.594,0.34),'nnUNet_Ensemble':(0.86,0.817,0.34),
-        'UNETR_Ensemble':(0.52,0.34,0.86),'VIT_m_Ensemble':(0.743,0.34,0.86),'VIT_s_Ensemble':(0.86,0.34,0.755), 'SwinTrans3D_Ensemble':(0.86,0.34,0.532),               
-        'CNN_h+VIT_n_Ensemble':(0.457,0.86,0.34),'Transfuse_Ensemble':(0.34,0.86,0.445),'Swinfuse_Ensemble':(0.34,0.86,0.668),
-        'nnFormer_Ensemble':(0.68,0.86,0.34), 'GT':(1,0,1)}
+Models={'MCNN_h+VIT_n':(0.34,0.829,0.86),
+        'Unet':(0.86,0.371,0.34),
+        'unetr':(0.52,0.34,0.86),
+        'Swin':(0.86,0.34,0.532),               
+        'CNN_h+VIT_n':(0.457,0.86,0.34),
+        'nnFormer':(0.68,0.86,0.34),
+        'MedNeXt':(1,0,1),
+        'GT':(0,0,1)}
 
+#Models={'MCNN_h+VIT_n_Ensemble':(0.34,0.829,0.86),'MCNN_h+VIT_s_Ensemble':(0.34,0.606,0.86),'MCNN_h+VIT_cv_Ensemble':(0.34,0.383,0.86),
+#        'Unet_Ensemble':(0.86,0.371,0.34),'MCNN_h_Ensemble':(0.86,0.594,0.34),'nnUNet_Ensemble':(0.86,0.817,0.34),
+#        'UNETR_Ensemble':(0.52,0.34,0.86),'VIT_m_Ensemble':(0.743,0.34,0.86),'VIT_s_Ensemble':(0.86,0.34,0.755), 'SwinTrans3D_Ensemble':(0.86,0.34,0.532),               
+#        'CNN_h+VIT_n_Ensemble':(0.457,0.86,0.34),'Transfuse_Ensemble':(0.34,0.86,0.445),'Swinfuse_Ensemble':(0.34,0.86,0.668),
+#        'nnFormer_Ensemble':(0.68,0.86,0.34), 'GT':(1,0,1)}
 
-TypeNetworks={'cnnBased':['Unet_Ensemble','MCNN_h_Ensemble','nnUNet_Ensemble'],
-'FullTrans':['nnFormer_Ensemble'],
-'Transform':['UNETR_Ensemble','VIT_m_Ensemble','VIT_s_Ensemble','SwinTrans3D_Ensemble'],   
-'MultiVit':['MCNN_h+VIT_n_Ensemble','MCNN_h+VIT_cv_Ensemble','MCNN_h+VIT_s_Ensemble'],
-'OneVit':['Transfuse_Ensemble','Swinfuse_Ensemble','CNN_h+VIT_n_Ensemble'],
-'best':['MCNN_h+VIT_s_Ensemble','nnUNet_Ensemble']}
+sliceAx=[9,12,7,7,7,7]
 
-for file in NiftiHektor:
-    sliceAx=int(file.split('-')[-1])
-    filename="-".join([x for x in file.split('-')[:-1]])
+#TypeNetworks={'cnnBased':['Unet_Ensemble','MCNN_h_Ensemble','nnUNet_Ensemble'],
+#'FullTrans':['nnFormer_Ensemble'],
+#'Transform':['UNETR_Ensemble','VIT_m_Ensemble','VIT_s_Ensemble','SwinTrans3D_Ensemble'],   
+#'MultiVit':['MCNN_h+VIT_n_Ensemble','MCNN_h+VIT_cv_Ensemble','MCNN_h+VIT_s_Ensemble'],
+#'OneVit':['Transfuse_Ensemble','Swinfuse_Ensemble','CNN_h+VIT_n_Ensemble'],
+#'best':['MCNN_h+VIT_s_Ensemble','nnUNet_Ensemble']}
+
+for file in range(len(NiftiHektor)):
+    slice=int(sliceAx[file])
+    filename=NiftiHektor[file].split('.')[0]
+    #sliceAx=int(file.split('-')[-1])
+    #filename="-".join([x for x in file.split('-')[:-1]])
     
-    for TypeNet in TypeNetworks.keys():
-        image_numpyImg=[]
-        data=[]
-        colors=[]
-        Image=os.path.join(pathimage, filename+'_0000.nii.gz')
-        Seg=os.path.join(pathlabel, filename+'.nii.gz')
-        data.append(Image)
-        for eachModel in TypeNetworks[TypeNet]:
-            SegModel=os.path.join(hektorPath,eachModel,filename+'.nii.gz')
-            data.append(SegModel)
-            colors.append(Models[eachModel])
-        data.append(Seg)   
-        colors.append(Models['GT'])
-        image_numpyImg,_=load_Nii(data,axis=0,slicAx=sliceAx)
-        out=boundaries(image_numpyImg,colors)
+    #for TypeNet in TypeNetworks.keys():
+    #    image_numpyImg=[]
+    #    data=[]
+    #    colors=[]
+    #    Image=os.path.join(pathimage, filename+'_0000.nii.gz')
+    #    Seg=os.path.join(pathlabel, filename+'.nii.gz')
+    #    data.append(Image)
+    #    for eachModel in TypeNetworks[TypeNet]:
+    #        SegModel=os.path.join(hektorPath,eachModel,filename+'.nii.gz')
+    #        data.append(SegModel)
+    #        colors.append(Models[eachModel])
+    #    data.append(Seg)   
+    #    colors.append(Models['GT'])
+    #    image_numpyImg,_=load_Nii(data,axis=0,slicAx=sliceAx)
+    #    out=boundaries(image_numpyImg,colors)
         
-        imsave(os.path.join(outpath,filename+'-'+TypeNet+'.png'),np.uint8(out*255))
+    #    imsave(os.path.join(outpath,filename+'-'+TypeNet+'.png'),np.uint8(out*255))
 
+
+    
+    image_numpyImg=[]
+    data=[]
+    colors=[]
+    Image=os.path.join(pathimage, filename+'_0000.nii.gz')
+    data.append(Image)
+    for eachModel in Models.keys():
+        SegModel=os.path.join(hektorPath,eachModel,filename+'.nii.gz')    
+        data.append(SegModel)
+        colors.append(Models[eachModel])
+    image_numpyImg,_=load_Niiv2(data,axis=-1,slicAx=slice)
+    out=boundaries(image_numpyImg,colors)
         
-        
+    imsave(os.path.join(outpath,filename+'.png'),np.uint8(out*255))      
     
        
     

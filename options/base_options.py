@@ -43,7 +43,7 @@ class BaseOptions():
         self.parser.add_argument('--name', type=str, default=None, help='name of the experiment. It decides where to store samples and models')
         self.parser.add_argument('--TrainConfig', type=str, default='BaseConfig',help='Configuration file that specify optimizers, metrics, lr schedule, etc')
         self.parser.add_argument('--Deterministic', dest='Deterministic',action='store_true',default=False, help='if is True the Deterministic training for reproducibility')          
-        self.parser.add_argument('--loadsplit',  type=str, default=None,help='load custom splits saved in splits_plk file')  
+        self.parser.add_argument('--loadsplit',  type=str, default='splits_final.json',help='load custom splits saved in splits_plk file by default I load the split name split final')  
         self.parser.add_argument('--checkpoints_dir', type=str, default=None, help='models are saved here, default is None meaning that files will save in ./checkpoints/TaskName')
         self.parser.add_argument('--debug', dest='debug',action='store_true', default=False, help='save the batch input image')#set as debug
         self.parser.add_argument('--yh_run_model', type=str, default='Train',choices=('Train','Continue'), help='chooses which Train or continue')#no used yet by the moment test and training has different scripts
@@ -69,8 +69,11 @@ class BaseOptions():
 
         # Test setting
         self.parser.add_argument('--sigmoid', dest='sigmoid',action='store_true', default=False, help='helping bool to change the default post processing setup for testing')  
-        self.parser.add_argument('--postprocessing', type=str, default="None",help='option for postprocessing data') 
-            
+        self.parser.add_argument("--postpro_dir", dest='postpro_dir', default=None,required=False, 
+                                 help="directory of mask used for postprocessing data, in case of using masking as postprocessing")
+        self.parser.add_argument('--postprocessing', type=str, default=None, help='option for postprocessing data')
+        self.parser.add_argument('--Conn_comp', dest='Conn_comp',action='store_true', default=False, help='use connected components')  
+        
     def str2None(self,v):
         """
         Converts string to None type; enables command line 
@@ -102,10 +105,10 @@ class BaseOptions():
         #############################
         
         #### device CPU or CUDA############
-        if self.opt.gpu_ids =='-1':
+        if str(self.opt.gpu_ids) =='-1':
             self.opt.device=torch.device("cpu") 
             os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-        else: 
+        else:
             self.opt.device=torch.device("cuda")
             torch.backends.cudnn.benchmark = True
         ########################
@@ -125,7 +128,11 @@ class BaseOptions():
             id = int(str_id)
             if id >= 0:
                 self.opt.gpu_ids.append(id)
-        
+
+        ######" validate None varaible"########""
+        if self.opt.pretrained=='None':
+            self.opt.pretrained=None
+
         if self.opt.pretrained!=None:
             self.opt.pretrained=os.path.join("./pretrained_ckpt",self.opt.pretrained)
         #self.args = vars(self.opt)# move to this place
@@ -140,18 +147,12 @@ class BaseOptions():
         else:
             self.opt.planning_stage='nnUNetData_plans_v2.1_stage'+str(self.opt.stage)
 
-        self.opt.num_pool_per_axis=CurrentPlan['plans_per_stage'][self.opt.stage]['num_pool_per_axis']
-        self.opt.pool_op_kernel_sizes=[[1,1,1]]+CurrentPlan['plans_per_stage'][self.opt.stage]['pool_op_kernel_sizes'] 
-        self.opt.conv_kernel_sizes=CurrentPlan['plans_per_stage'][self.opt.stage]['conv_kernel_sizes'] 
-        
         if self.opt.imageSize==0: # use by default nnUNet configuration : pooling, kernel and others
             self.opt.imageSize=CurrentPlan['plans_per_stage'][self.opt.stage]['patch_size'].tolist()
             self.opt.filters_Encoder=features[:len(self.opt.conv_kernel_sizes)]
-        else:# configuracion for TransBTS 
-            self.opt.num_pool_per_axis=[4,4,4,4]#[2,5,5]
-            self.opt.pool_op_kernel_sizes=[[1,1,1],[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2],[2, 2, 2]] #[[1,1,1],[1, 2, 2], [2, 2, 2], [2, 2, 2], [1, 2, 2], [1, 2, 2]]
-            self.opt.conv_kernel_sizes=[[3, 3, 3], [3, 3, 3], [3, 3, 3],[3, 3, 3],[3, 3, 3],[3, 3, 3]]#[[1, 3, 3], [1, 3, 3], [3, 3, 3], [3, 3, 3],[3, 3, 3],[3, 3, 3]]
-            self.opt.filters_Encoder=(16,32,64,128,256,320)#features[:len(self.opt.conv_kernel_sizes)]
+            self.opt.num_pool_per_axis=CurrentPlan['plans_per_stage'][self.opt.stage]['num_pool_per_axis']
+            self.opt.pool_op_kernel_sizes=[[1,1,1]]+CurrentPlan['plans_per_stage'][self.opt.stage]['pool_op_kernel_sizes'] 
+            self.opt.conv_kernel_sizes=CurrentPlan['plans_per_stage'][self.opt.stage]['conv_kernel_sizes'] 
 
         if self.opt.batchSize==0:# use by default nnUNet batchsize configuration batchsize 
             self.opt.batchSize=CurrentPlan['plans_per_stage'][self.opt.stage]['batch_size']
@@ -164,12 +165,12 @@ class BaseOptions():
         if self.opt.name is None:
             self.opt.name=self.opt.encoder+'F'+str(self.opt.fold)
         else:
-            self.opt.name=self.opt.encoder+'__'+self.opt.name+'F'+str(self.opt.fold)
+            self.opt.name=self.opt.encoder+'__'+self.opt.name+'F'+str(self.opt.fold) # add a additional etiqueta to the name of the model
             
         #self.opt.imageSize=[int(self.opt.imageSize[i]) for i in range(len(self.opt.imageSize))]
-        self.opt.filters_Encoder=tuple([int(self.opt.filters_Encoder[i]) for i in range(len(self.opt.filters_Encoder))])
+        #self.opt.filters_Encoder=tuple([int(self.opt.filters_Encoder[i]) for i in range(len(self.opt.filters_Encoder))])
         if self.opt.region[0]!='None' and ('BraTS' not in self.opt.dataroot):
-            self.opt.region=tuple([tuple([int(i) for i in x.split(',')]) if len(x)>1 else (int(x),) for x in self.opt.region])
+            self.opt.region=self.opt.region #tuple([tuple([int(i) for i in x.split(',')]) if len(x)>1 else (int(x),) for x in self.opt.region]) # dont use this line since config file will give the right format
        
         ### set checkpoint and output folder
         if self.opt.checkpoints_dir is not None:
@@ -220,15 +221,8 @@ class BaseOptions():
         val_interval = self.opt.val_interval
         Plots=VisualPlots(self.opt) #I will use to save some segmentation results. At the moment is only for plot loss curve
         
-        # check this part
+        # check this part and made code multi-gpu
         global_rank = get_rank()
-
-        # deprecated only use wandb
-        #if global_rank == 0 and self.opt.out_dir is not None:
-        #    log_dir=os.makedirs(os.path.join(self.opt.out_dir, 'logging'), exist_ok=True)
-        #    self.opt.log_writer = SummaryWriter(log_dir=log_dir)
-        #else:
-        #    self.opt.log_writer = None
 
         if global_rank == 0 and self.opt.enable_wandb:
             dir_wandb=os.makedirs(os.path.join('wandb'), exist_ok=True)
@@ -240,8 +234,5 @@ class BaseOptions():
         else:
             self.opt.wandb_logger = None
         
-        
-        
-        
-        
+
         return self.opt,root_dir,max_epochs,val_interval,Plots

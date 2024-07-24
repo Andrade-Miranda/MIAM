@@ -304,33 +304,27 @@ class nnUNetDataset(BaseDataset):
         This is a suggestion for if your dataset is a dictionary (my personal standard)
         :return:
             """
-        dataset_directory=os.path.join('./splits_plk',self.opt.dataroot,'nnUNet')
-        splits_file = os.path.join(dataset_directory, "splits_final.json")
-        if not os.path.isfile(splits_file):
+        dataset_directory=os.path.join('./splits_plk',self.opt.dataroot,self.opt.dataset_mode)
+        splits_file = os.path.join(dataset_directory, self.opt.loadsplit)
+        if not os.path.isfile(splits_file): # si no hay un split final creado
             splits = []
             all_keys_sorted = np.sort(list(dataset.keys()))
+            print("Creating new split...")
+            kfold = KFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
+            util.mkdirs(dataset_directory)
+            for i, (train_idx, test_idx) in enumerate(kfold.split(all_keys_sorted)):
+                train_keys = np.array(all_keys_sorted)[train_idx]
+                test_keys = np.array(all_keys_sorted)[test_idx]
+                splits.append(OrderedDict())
+                splits[-1]['train'] = train_keys
+                splits[-1]['val'] = test_keys
+            with open(splits_file, 'w') as f:
+                json.dump(splits,f,cls=util.NumpyArrayEncoder)
+            self.opt.loadsplit=splits_file
+        else:
+            self.opt.loadsplit=os.path.join(dataset_directory,self.opt.loadsplit)
+            print("Loading split...:%s" % splits_file)
             
-            if eval(self.opt.loadsplit):
-                splits_file=os.path.join('./splits_plk',self.opt.dataroot,self.opt.loadsplit) #splits_final.pkl    
-                print("Loading split...:%s" % splits_file)
-                ##### temporary solution for create a new custom pkl split
-                # from util.split_fnct import Brats_splitprogressive2
-                # splits=Brats_splitprogressive2(all_keys_sorted,5)
-                # with open('./splits_plk/lowDataRegime_Brats.pkl', "wb") as fout:
-                #     pickle.dump(splits, fout, protocol=-1)
-            else:
-                print("Creating new split...")
-                kfold = KFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
-                util.mkdirs(dataset_directory)
-                for i, (train_idx, test_idx) in enumerate(kfold.split(all_keys_sorted)):
-                    train_keys = np.array(all_keys_sorted)[train_idx]
-                    test_keys = np.array(all_keys_sorted)[test_idx]
-                    splits.append(OrderedDict())
-                    splits[-1]['train'] = train_keys
-                    splits[-1]['val'] = test_keys
-                with open(splits_file, 'w') as f:
-                    json.dump(splits,f,cls=util.NumpyArrayEncoder)
-        self.opt.loadsplit=splits_file
         try: # accept .pkl or .json file for splitting data
             if self.opt.loadsplit.split('.')[-1]=='pkl':            
                 with open(splits_file, "rb") as f:

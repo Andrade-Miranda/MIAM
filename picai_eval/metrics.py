@@ -344,14 +344,12 @@ class Metrics:
             'Best_THR': threshold[idx]
         }
 
-    def prediction_rejection_ratio(self,subject_list: Optional[List[str]] = None, metric='prob', norm_logits=False,level='image'):
+    def prediction_rejection_ratio(self,subject_list: Optional[List[str]] = None, metric='prob', norm_logits=False,level='image', misclassification=None):
          # Based on https://github.com/KaosEngineer/PriorNetworks/blob/master/prior_networks/assessment/rejection.py
         # compute area between base_error(1-x) and the rejection curve
         # compute area between base_error(1-x) and the oracle curve
         # take the ratio
-        # Filter out background class
-        #logits = logits[labels != 0, :]
-        #labels = labels[labels != 0]
+
         if level=='image':
             labels=torch.tensor([self.case_target[s] for s in subject_list])
             logits_tumor=[self.case_pred[s]  for s in subject_list]
@@ -368,21 +366,32 @@ class Metrics:
             logits_tumor=[truelabel[1] for truelabel in data]
             logits_notumor=[1-truelabel[1] for truelabel in data]
         logits=torch.tensor(np.concatenate((np.array(logits_notumor)[:,None],np.array(logits_tumor)[:,None]),axis=1))
+
+        # consider only positive or negative for missclassification
+        if  misclassification=='Positive': #I only will check missclassification of positive true samples, check when the model is not sure about the positive
+            logits = logits[labels == 1, :]
+            labels = labels[labels == 1]
+        elif  misclassification=='Negative': #I only will check missclassification of negative true samples, check when the model is not sure about the negative
+            logits = logits[labels == 0, :]
+            labels = labels[labels == 0]
+        else:
+            pass # evaluate all data, default case
    
          # Get class probabilities
         probs = logits # For maskformer we compute probs directly
      
         if metric == 'prob':
              confidence, preds = torch.max(probs, dim=1) # Take as confidence the probability of the predicted class
+             sorted_idx = torch.argsort(confidence, descending = True)
         elif metric == 'entropy':
             probs = probs + 1e-16
             confidence = torch.sum((torch.log(probs) * probs), axis=1) # Negative entropy
             preds = torch.argmax(probs, dim=1)
-
+            sorted_idx = torch.argsort(confidence, descending = False)
          # the rejection plots needs to reject to the right the most uncertain/less confident samples
          # if uncertainty metric, high means reject, sort in ascending uncertainty;
         # if confidence metric, low means reject, sort in descending confidence
-        sorted_idx = torch.argsort(confidence, descending = True)
+        
 
         # reverse cumulative errors function (rev = from all to first, instead from first error to all)
         self.rev_cum_errors = []
@@ -398,7 +407,7 @@ class Metrics:
         base_error = self.rev_cum_errors[-1] # error when all data is taken into account
 
         # area under the rejection curve (used later to compute area between random and rejection curve)
-        auc_uns = 1.0 - auc(self.fraction_data / 100.0, self.rev_cum_errors[::-1] / 100.0)
+        auc_uns = 1.0 - auc(self.fraction_data / 100.0, self.rev_cum_errors[::-1] / 100.0) #invert cumulate error
 
         # random rejection baseline, it's 1 - x line "scaled" and "shifted" to pass through base error and go to 100% rejection
         self.random_rejection = np.asarray(

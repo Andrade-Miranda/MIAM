@@ -407,8 +407,13 @@ def test_Predict_Rank(model,opt,test_loader,datalen):
 
             #### save sigmoid mask################
             val_outputs = testConfig.Config.inference(val_inputs)#### inference
-            val_outputsSoftmax = testConfig.Config.post_trans(val_outputs[:,-1])
-            val_outputs_seg = testConfig.Config.postLast(val_outputsSoftmax)
+            if not opt.sigmoid:
+                val_outputsSoftmax = testConfig.Config.post_trans(val_outputs[0])
+                val_outputs_seg = testConfig.Config.postLast(val_outputsSoftmax)
+                val_outputsSoftmax=val_outputsSoftmax[-1][None,...]
+            elif opt.sigmoid:
+                val_outputsSoftmax = testConfig.Config.post_trans(val_outputs[:,-1])
+                val_outputs_seg = testConfig.Config.postLast(val_outputsSoftmax)
 
             patientsID.append(out_fname)
             outputpath=join(output_folder,out_fname+'.nii.gz')

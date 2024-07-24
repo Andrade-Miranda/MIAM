@@ -80,20 +80,20 @@ class PICAIConfig():
             self.loss_function = FL_and_CE_loss(fl_kwargs={'alpha':self.class_weights[-1],'size_average':False},
                                                ce_kwargs={'reduction': 'sum'},alpha=self.opt.lambda_Loss[0]).to(self.opt.device)#alpha represent the weight for each loss
         elif self.opt.loss_option=='FocalLossbin':
-            self.loss_function=FocalLossBin(alpha=self.class_weights[-1]).to(self.opt.device)
+            self.loss_function=FocalLossBin(alpha=self.class_weights[0]).to(self.opt.device)
         elif self.opt.loss_option=='FocalLoss':
             self.loss_function = FocalLoss(include_background=True,  # only two classes and keep the same weight as before 
-                                        to_onehot_y=False, 
-                                         gamma=2.0, 
+                                        to_onehot_y=not(self.opt.sigmoid), 
+                                         gamma=1.0, 
                                          weight=torch.tensor(self.class_weights),
                                          reduction="sum").to(self.opt.device)
         elif self.opt.loss_option=='DiceFocalLoss':
-            self.loss_function=DiceFocalLoss(include_background=False, to_onehot_y=True,#False if self.opt.dataroot=='Task2201_picai' else True, 
-                                        sigmoid=True,#False if self.opt.dataroot=='Task2201_picai' else True, 
-                                        softmax=False,#True if self.opt.dataroot=='Task2201_picai' else False, 
+            self.loss_function=DiceFocalLoss(include_background=True, to_onehot_y=not(self.opt.sigmoid),#False if self.opt.dataroot=='Task2201_picai' else True, 
+                                        sigmoid=self.opt.sigmoid,#False if self.opt.dataroot=='Task2201_picai' else True, 
+                                        softmax=not(self.opt.sigmoid),#True if self.opt.dataroot=='Task2201_picai' else False, 
                                         other_act=None, 
                                         squared_pred=False, jaccard=False, reduction='mean', smooth_nr=1e-05, 
-                                        smooth_dr=1e-05, batch=False, gamma=2.0, focal_weight=self.class_weights[1], 
+                                        smooth_dr=1e-05, batch=False, gamma=2.0, focal_weight=self.class_weights, 
                                         lambda_dice=self.opt.lambda_Loss[0], lambda_focal=self.opt.lambda_Loss[1])
         elif self.opt.loss_option=='GeneralDiceFocalLoss':
             self.loss_function=GeneralizedDiceFocalLoss(include_background=False, to_onehot_y=True,#False if self.opt.dataroot=='Task2201_picai' else True, 
@@ -136,10 +136,12 @@ class PICAIConfig():
     ################################################################################################################################################
         
         ###will depend of task
-        self.post_trans = Compose(
+        if self.opt.sigmoid and self.opt.output_nc==1:
+            self.post_trans = Compose(
                 [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
             )
-           #[Activations(softmax=True), AsDiscrete(argmax=True,to_onehot=self.opt.output_nc)] [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
+        elif not self.opt.sigmoid and self.opt.output_nc>1:
+            self.post_trans = Compose([Activations(softmax=True,dim=1), AsDiscrete(argmax=True,to_onehot=self.opt.output_nc,dim=1)]) 
 
         #metrics
         self.dice_metricTrain = DiceMetric(include_background=False, reduction="mean",ignore_empty=True)

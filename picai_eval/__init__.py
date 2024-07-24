@@ -11,12 +11,11 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
 from picai_eval.eval import evaluate, evaluate_folder
 from picai_eval.metrics import Metrics
 
-print("If you have questions or suggestions, feel free to open an issue " +
-      "at https://github.com/DIAGNijmegen/picai_eval\n")
+#print("If you have questions or suggestions, feel free to open an issue " +
+#      "at https://github.com/DIAGNijmegen/picai_eval\n")
 
 
 __all__ = [

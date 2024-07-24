@@ -29,9 +29,6 @@ print('#Data loader scheme created')
     
 """ --------load model and config--------------- """ 
 model = create_model(opt)
-#x=torch.rand((1,3,96,96,96)).cuda()
-#y=model(x)
-#n_parameters=sum(p.numel() for p in model.parameters() if p.requires_grad)
 trainConfig=TrainSetup(opt,model)
 model=trainConfig.Config.model
 """-----------------------------------"""
@@ -47,7 +44,6 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
         optimizer=trainConfig.Config.optimizer, 
         loss_func=trainConfig.Config.loss_function,
         scaler=trainConfig.Config.loss_scaler,
-        lr_scheduler=trainConfig.Config.lr_scheduler, 
         train_gen=train_loader, 
         args=opt, 
         tracking_metrics=trainConfig.Config.tracking_metrics,
@@ -66,7 +62,7 @@ for epoch in range(trainConfig.Config.tracking_metrics['start_epoch'], opt.epoch
             trainConfig.Config.optimizer.param_groups[0]['lr']=lrupdate
         print(f"Learning Rate Updated! New Value: {lrupdate:.10}", flush=True)
     else:
-        lrupdate=trainConfig.Config.optimizer.param_groups[0]['lr']
+        lrupdate=trainConfig.Config.lr_scheduler.step(epoch + 1)
         print(f"Learning Rate fix: {lrupdate:.10}", flush=True)
     # #🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝
     if  opt.enable_wandb:

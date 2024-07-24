@@ -13,7 +13,6 @@ import torch
 import torch.nn as nn
 
 from monai.networks.blocks.dynunet_block import UnetOutBlock,get_conv_layer
-from monai.networks.blocks.unetr_block import UnetrBasicBlock
 from .ViT_StreamSM import ViT_S
 from monai.utils import ensure_tuple_rep
 from torch.nn import init
@@ -22,7 +21,8 @@ from util.block import FusedGatedUnit
 from .encoder import BasicUnetEnc
 from .decoder import MCNN_VIT_decoder
 import einops
-
+from util.block import Upsampling_DeepSupervision
+import numpy as np
   
 
 class MultiCNNHeavy_VITsingle(nn.Module):
@@ -146,7 +146,15 @@ class MultiCNNHeavy_VITsingle(nn.Module):
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0] * in_channels, out_channels=out_channels)
         """ ------------------------------------------------------------- """      
         
-    
+        """ -------------------deep supervision ------------------------------- """        
+        if self.opt.DeepSupervision:
+            self.deepSupervision=Upsampling_DeepSupervision(
+                spatial_dims=opt.spatial_dims,
+                features=list(np.array(filters_Encoder[:-1]) * in_channels),
+                out_channels=opt.output_nc,
+                size=self.opt.imageSize
+                )
+        
         """ -------------------CNN reshape when last layer doesnt match------------------------------- """        
         if self.patch_size[0] > 1: 
             self.reshapeConv=get_conv_layer(
@@ -168,7 +176,7 @@ class MultiCNNHeavy_VITsingle(nn.Module):
         return x
     
 
-    def forward(self, x_in):
+    def forward(self, x_in,DeppSuper):
         
         encModal=[]
         numnoda=0
@@ -190,7 +198,10 @@ class MultiCNNHeavy_VITsingle(nn.Module):
 
         output=self.decoder(outViT,skip_connections)
         
-        return self.out(output[-1])
+        if DeppSuper:
+            return self.deepSupervision(output)
+        else:
+            return self.out(output[-1])
     
 
     def name(self):

@@ -12,7 +12,7 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--seed', type=int, default=12345, help='# of seed for deterministic training')
         self.parser.add_argument('--region', nargs='+', default=((1,4),(1,4,2),(4,)), help='segmentation regions to merge, default Brats')
         self.parser.add_argument('--spatial_dims', type=int, default=3, help='The network will be 2D or 3D')
-        self.parser.add_argument('--oversample_foreground_percent', type=float, default=0.66, help='sampling strategy .66 fg rest uniform, for nnUNet set to 0.33')
+        self.parser.add_argument('--oversample_foreground_percent', type=float, default=0.33, help='sampling strategy .66 fg rest uniform, for nnUNet set to 0.33')
 
      # transformers setting   
         self.parser.add_argument('--patchSize', type=int, default=1, help='number of the patch for transformer network')
@@ -32,9 +32,11 @@ class TrainOptions(BaseOptions):
     
     # CNN setting
         self.parser.add_argument('--res_block', dest='res_block',action='store_false', default=True, help='if is True the CNN network use resnet blocks')  
-        self.parser.add_argument('--filters_Encoder', nargs='+', default=(16,32,64,128), help='filters for the CNN network')
+        self.parser.add_argument('--filters_Encoder', nargs='+', default=(16,32,64,128,256,320), help='filters for the CNN network')
+        self.parser.add_argument('--num_pool_per_axis', nargs='+', default=[4,4,4,4], help='pool operation per axis and for each downsaple stage')
+        self.parser.add_argument('--pool_op_kernel_sizes', nargs='+', default=[[1,1,1],[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2],[2, 2, 2]], help='pool per axis and per stage')
+        self.parser.add_argument('--conv_kernel_sizes', nargs='+', default=[[3, 3, 3], [3, 3, 3], [3, 3, 3],[3, 3, 3],[3, 3, 3],[3, 3, 3]], help='kernel size per stage')
 
-    
     # Optimization parameters
         self.parser.add_argument('--opt', default='adamw', type=str, metavar='OPTIMIZER',
                         help='Optimizer (default: "adamw"')
@@ -109,6 +111,7 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--local_rank', default=-1, type=int)
         self.parser.add_argument('--dist_on_itp', action='store_true',dest='dist_on_itp', default=False)
         self.parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
+        self.parser.add_argument('--distributed', action='store_true', default=False, help='Enabling distributed training')
         
     # EMA related parameters
         self.parser.add_argument('--model_ema', action='store_true', default=False)
@@ -128,8 +131,12 @@ class TrainOptions(BaseOptions):
                     help="The name of the new run.")
 
 ####################OPTION FOR LOSS function###################################""""
+        self.parser.add_argument('--DeepSupervision', action='store_true', default=False)
+        self.parser.add_argument('--attention', action='store_true', default=False)
         self.parser.add_argument('--loss_option', type=str, default="DiceFocalLoss", help='choose loss function')        
         self.parser.add_argument('--lambda_Loss', type=float, nargs='+', default=[1,1], help='lambda for compose loss, vector represented the weight of the loss')
+        self.parser.add_argument('--class_weights', type=float, nargs='+', default=[0.2,0.8], help='lambda for compose loss, vector represented the weight of the loss')
+
 
 ####################OPTION AVAILABLE only with config contrastive###################################""""        
         self.parser.add_argument('--lambdaCNN', type=float, default=1e-1, help='lambda contrastive CNN')

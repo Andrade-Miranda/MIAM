@@ -24,8 +24,9 @@ from monai.losses.focal_loss import FocalLoss
 from monai.networks import one_hot
 from monai.losses.dice import DiceLoss,GeneralizedDiceLoss
 from monai.utils import LossReduction, Weight
-
-
+from torch.nn import Module
+from monai.losses import DiceCELoss
+import numpy as np
 
 
 ##### TO CHECK ###############################################################################################
@@ -320,7 +321,7 @@ class DiceFocalLoss(_Loss):
         super().__init__()
         self.dice = DiceLoss(
             include_background=include_background,
-            to_onehot_y=False,
+            to_onehot_y=to_onehot_y,
             sigmoid=sigmoid,
             softmax=softmax,
             other_act=other_act,
@@ -333,7 +334,7 @@ class DiceFocalLoss(_Loss):
         )
         self.focal = FocalLoss(
             include_background=include_background,
-            to_onehot_y=False,
+            to_onehot_y=to_onehot_y,
             gamma=gamma,
             weight=focal_weight,
             reduction=reduction,
@@ -482,3 +483,31 @@ class GeneralizedDiceFocalLoss(torch.nn.modules.loss._Loss):
         focal_loss = self.focal(input, target)
         total_loss: torch.Tensor = self.lambda_gdl * gdl_loss + self.lambda_focal * focal_loss
         return total_loss #,gdl_loss,focal_loss
+
+
+
+class Supervision_loss_Seg (Module): # D2
+
+    def __init__(self, weights = None,attention=False,criterion=None):
+        super(Supervision_loss_Seg, self).__init__()
+        self.weights = weights
+        self.criterion = criterion 
+        self.attention=attention
+
+    def forward(self, y_pred, y_true): # error condition to say id there is only one output use only criterion
+        loss=0
+        if not self.weights:
+        # we give each output a weight which decreases exponentially (division by 2) as the resolution decreases 
+        # this gives higher resolution outputs more weight in the loss 
+            lista=[1 / (2 ** i) for i in range(len(y_pred))]
+            lista.reverse()
+            weights = np.array(lista) 
+         # we don't use the lowest 2 outputs. Normalize weights so that they sum to 1 
+            weights = weights / weights.sum()
+        else:
+             weights=self.weights
+             
+        for i in range(len(y_pred)):
+            loss += weights[i] *self.criterion(y_pred[i], y_true)
+            
+        return loss

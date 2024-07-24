@@ -18,22 +18,22 @@ from time import sleep
 import numpy as np
 import torch
 from batchgenerators.utilities.file_and_folder_operations import *
-from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
+from nnUNet.nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad_norm_
 
-from nnunet.evaluation.region_based_evaluation import evaluate_regions, get_brats_regions
-from nnunet.network_architecture.generic_UNet import Generic_UNet
-from nnunet.network_architecture.initialization import InitWeights_He
-from nnunet.network_architecture.neural_network import SegmentationNetwork
-from nnunet.training.dataloading.dataset_loading import unpack_dataset
-from nnunet.training.loss_functions.deep_supervision import MultipleOutputLoss2
-from nnunet.training.loss_functions.dice_loss import DC_and_BCE_loss, get_tp_fp_fn_tn, SoftDiceLoss
-from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
-from nnunet.training.network_training.nnUNetTrainerV2_DDP import nnUNetTrainerV2_DDP
-from nnunet.utilities.distributed import awesome_allgather_function
-from nnunet.utilities.to_torch import maybe_to_torch, to_cuda
+from nnUNet.nnunet.evaluation.region_based_evaluation import evaluate_regions, get_brats_regions
+from nnUNet.nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnUNet.nnunet.network_architecture.initialization import InitWeights_He
+from nnUNet.nnunet.network_architecture.neural_network import SegmentationNetwork
+from nnUNet.nnunet.training.dataloading.dataset_loading import unpack_dataset
+from nnUNet.nnunet.training.loss_functions.deep_supervision import MultipleOutputLoss2
+from nnUNet.nnunet.training.loss_functions.dice_loss import DC_and_BCE_loss, get_tp_fp_fn_tn, SoftDiceLoss
+from nnUNet.nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
+from nnUNet.nnunet.training.network_training.nnUNetTrainerV2_DDP import nnUNetTrainerV2_DDP
+from nnUNet.nnunet.utilities.distributed import awesome_allgather_function
+from nnUNet.nnunet.utilities.to_torch import maybe_to_torch, to_cuda
 
 
 class nnUNetTrainerV2BraTSRegions_BN(nnUNetTrainerV2):

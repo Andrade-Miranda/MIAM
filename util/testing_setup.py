@@ -30,6 +30,7 @@ from help_fnct.UncertainSmallEmpty.evaluator import evaluate_folders
 from help_fnct.calibration.seg_calibration import Evaluate_Segcalibration_Folder
 import sys
 from medutils.medutils import load_itk
+from omegaconf import OmegaConf
 
 
 from monai.transforms import (
@@ -54,30 +55,10 @@ from batchgenerators.utilities.file_and_folder_operations import *
 from util.visualizer import Picai_ResultsPlots
 
 
+###############################################################################################
 def predict_from_folder(opt=None):
-    """
-        here we use the standard naming scheme to generate list_of_lists and output_files needed by predict_cases
-
-    :param model:
-    :param input_folder:
-    :param output_folder:
-    :param folds:
-    :param save_npz:
-    :param num_threads_preprocessing:
-    :param num_threads_nifti_save:
-    :param lowres_segmentations:
-    :param part_id:
-    :param num_parts:
-    :param tta:
-    :param mixed_precision:
-    :param overwrite_existing: if not None then it will be overwritten with whatever is in there. None is default (no overwrite)
-    :return:
-    """
-
     print("loading parameters for folds,", opt.fold)
     trainer= restore_Model(join(opt.checkpoints_dir,opt.chkname),opt)
-
-
     return trainer
 
 def enable_dropout(model):
@@ -88,7 +69,6 @@ def enable_dropout(model):
     return model
 
 def restore_Model(file,opt):
-    
     model = create_model(opt)
     checkpoint = torch.load(file,map_location=opt.device)
     if 'model_state_dict' in checkpoint:
@@ -100,6 +80,100 @@ def restore_Model(file,opt):
     print("Replace Default initialization... LOAD TRAINED WEIGHTS")
     return model
 
+def check_input_folder_and_return_caseIDs(input_folder, expected_num_modalities):
+    print("This model expects %d input modalities for each image" % expected_num_modalities)
+    files = subfiles(input_folder, suffix=".nii.gz", join=False, sort=True)
+
+    maybe_case_ids = np.unique([i[:-12] for i in files])
+
+    remaining = deepcopy(files)
+    missing = []
+
+    assert len(files) > 0, "input folder did not contain any images (expected to find .nii.gz file endings)"
+
+    # now check if all required files are present and that no unexpected files are remaining
+    for c in maybe_case_ids:
+        for n in range(expected_num_modalities):
+            expected_output_file = c + "_%04.0d.nii.gz" % n
+            if not isfile(join(input_folder, expected_output_file)):
+                missing.append(expected_output_file)
+            else:
+                remaining.remove(expected_output_file)
+
+    print("Found %d unique case ids, here are some examples:" % len(maybe_case_ids),
+          np.random.choice(maybe_case_ids, min(len(maybe_case_ids), 10)))
+    print("If they don't look right, make sure to double check your filenames. They must end with _0000.nii.gz etc")
+
+    if len(remaining) > 0:
+        print("found %d unexpected remaining files in the folder. Here are some examples:" % len(remaining),
+              np.random.choice(remaining, min(len(remaining), 10)))
+
+    if len(missing) > 0:
+        print("Some files are missing:")
+        print(missing)
+        raise RuntimeError("missing files in input_folder")
+
+    return maybe_case_ids
+#################################################################################################################################################################
+
+
+############LOAD TRAINING SETUP YAML###############################################################################################
+def load_trainingSetup_yamlFile(file_name,args,numiter):
+    if os.path.exists(file_name):
+        print(f"Config file {file_name} exist!")
+        ###config file ######
+        configFile = OmegaConf.load(file_name)
+    else:
+        return (load_trainingSetup(file_name,args,numiter))
+
+    if args.task_name.split('_')[-1]=='BraTS2021':
+        configFile['region_class_order']=(2,1,4)
+        configFile['isbrats']=True
+    else:
+        configFile['region_class_order']=None
+        configFile['isbrats']=False
+    for var_name in dir(args):
+        if not var_name.startswith("__") and not var_name=='model' and not var_name.startswith("_") and not var_name=='GPU' and not var_name=='task_name' and not var_name=='Nfolds':
+            var_value=getattr(args,var_name)
+            if type(var_value) == list:
+                configFile[var_name]=var_value[numiter]
+            else:
+                configFile[var_name]=var_value
+
+    if configFile['encoder'] in ['VIT_n','VIT_s','VIT_m','MVIT_n','MVIT_s','MVIT_m','CNN+VIT2Stream','SegResNetVAE','SegResNet','UNETR','Unet','SwinTrans3D','MCNN_h']:
+        configFile['hybrid']=False
+    else:
+        configFile['hybrid']=True
+  
+    if args.task_name=='Task004_BraTS2021':
+        configFile['TrainConfig']='Test_ConfigBrats'
+    else:
+        configFile['TrainConfig']='TestConfig'
+
+    if args.mode=='MCdropOut':
+        configFile['dropout_rate']=args.MCDropOutRate
+
+    if args.enable_wandb:
+        configFile['project']=args.project
+    else:
+        configFile['project']= None
+
+    if args.mode=='MeanEnsemb' or args.mode=='MCdropOut':
+        configFile['output_dir']=args.output_pred_dir
+    else:
+        configFile['output_dir']=args.output_pred_dir[numiter]
+    
+    configFile['checkpoints_dir']=args.checkpoints_dir[numiter]
+    configFile['chkname']=args.chkname
+    configFile['isTrain']=False
+    configFile['device']= 'cuda' if args.GPU else 'cpu'
+    configFile['dataset_mode'] = args.mode
+    configFile['yh_run_model'] = 'test'
+
+    return Namespace(**configFile)
+###############################################################################################
+
+############LOAD TRAINING SETUP YAML###############################################################################################
 def load_trainingSetup(file_name,args,numiter):
     lista=[]
     with open(file_name, 'rb') as opt_file:
@@ -158,6 +232,10 @@ def load_trainingSetup(file_name,args,numiter):
                 value= [int(x) for x in newValue]
             elif key=='hidden_size':
                 value=int(value)
+            elif key=='feature_size':
+                value=int(value)                
+            elif key =='opt_betas':
+                value=list([float(i[1:]) for i in value[:-1].split(',')])
             elif key=='dropout_rate':
                 if args.mode=='MCdropOut':
                     value=args.MCDropOutRate
@@ -210,12 +288,7 @@ def load_trainingSetup(file_name,args,numiter):
                 if type(var_value) == list:
                     lista.append((var_name,var_value[numiter]))
                 else:
-                    lista.append((var_name,var_value))
-        #lista.append(('input_folder',args.input_folder))
-        #lista.append(('outputSoft_dir',args.outputSoft_dir[numiter]))
-        #lista.append(('num_threads_preprocessing',args.num_threads_preprocessing))
-        #lista.append(('num_threads_nifti_save',args.num_threads_nifti_save))
-        
+                    lista.append((var_name,var_value))        
         opt=dict(lista)
         if opt['encoder'] in ['VIT_n','VIT_s','VIT_m','MVIT_n','MVIT_s','MVIT_m','CNN+VIT2Stream','SegResNetVAE','SegResNet','UNETR','Unet','SwinTrans3D','MCNN_h']:
             opt['hybrid']=False
@@ -223,44 +296,10 @@ def load_trainingSetup(file_name,args,numiter):
             opt['hybrid']=True
         # for k, v in opt.items():
         #     pars.add_argument('--' + k, default=v)
-        
         return Namespace(**opt)
+###########################################################################################################
 
 
-def check_input_folder_and_return_caseIDs(input_folder, expected_num_modalities):
-    print("This model expects %d input modalities for each image" % expected_num_modalities)
-    files = subfiles(input_folder, suffix=".nii.gz", join=False, sort=True)
-
-    maybe_case_ids = np.unique([i[:-12] for i in files])
-
-    remaining = deepcopy(files)
-    missing = []
-
-    assert len(files) > 0, "input folder did not contain any images (expected to find .nii.gz file endings)"
-
-    # now check if all required files are present and that no unexpected files are remaining
-    for c in maybe_case_ids:
-        for n in range(expected_num_modalities):
-            expected_output_file = c + "_%04.0d.nii.gz" % n
-            if not isfile(join(input_folder, expected_output_file)):
-                missing.append(expected_output_file)
-            else:
-                remaining.remove(expected_output_file)
-
-    print("Found %d unique case ids, here are some examples:" % len(maybe_case_ids),
-          np.random.choice(maybe_case_ids, min(len(maybe_case_ids), 10)))
-    print("If they don't look right, make sure to double check your filenames. They must end with _0000.nii.gz etc")
-
-    if len(remaining) > 0:
-        print("found %d unexpected remaining files in the folder. Here are some examples:" % len(remaining),
-              np.random.choice(remaining, min(len(remaining), 10)))
-
-    if len(missing) > 0:
-        print("Some files are missing:")
-        print(missing)
-        raise RuntimeError("missing files in input_folder")
-
-    return maybe_case_ids
 
 ################### Mode NCrossval###############################
 def Mode_NCrossval(opt,Nfolds):
@@ -297,7 +336,7 @@ def Mode_NCrossval(opt,Nfolds):
                         os.remove(val_data)
                         val_data= data
                     val_inputs=torch.from_numpy(val_data)[None,...].to(opt[i].device)
-                    val_outputs = testConfig.Config.inference(val_inputs)
+                    val_outputs = testConfig.Config.inference(val_inputs,False)
                     
                     val_outputsSoftmax = testConfig.Config.post_trans(val_outputs[:,-1])
                     val_outputs_seg = testConfig.Config.postLast(val_outputsSoftmax) 
@@ -396,9 +435,9 @@ def Mode_NCrossval(opt,Nfolds):
                 name='Use_evaluator')
             #######################################################
 
-            createPlots.Plot_curves(clasif_metrics,seg_metrics,calibration_values,UseEvaluator)
-        
+            createPlots.Plot_curves(clasif_metrics,seg_metrics,calibration_values,UseEvaluator)        
 ############################################################################################################################
+
 
 ################### Mode Mode_MeanEnsemb###############################
 def Mode_MeanEnsemb(opt,Nfolds):

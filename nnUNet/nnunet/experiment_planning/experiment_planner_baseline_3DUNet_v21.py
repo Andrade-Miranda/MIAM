@@ -28,13 +28,13 @@ class ExperimentPlanner3D_v21(ExperimentPlanner):
     We also increase the base_num_features to 32. This is solely because mixed precision training with 3D convs and
     amp is A LOT faster if the number of filters is divisible by 8
     """
-    def __init__(self, folder_with_cropped_data, preprocessed_output_folder):
+    def __init__(self, folder_with_cropped_data, preprocessed_output_folder,spacing_ISO=True):
         super(ExperimentPlanner3D_v21, self).__init__(folder_with_cropped_data, preprocessed_output_folder)
         self.data_identifier = "nnUNetData_plans_v2.1"
         self.plans_fname = join(self.preprocessed_output_folder,
                                 "nnUNetPlansv2.1_plans_3D.pkl")
         self.unet_base_num_features = 32
-
+        self.spacing_ISO=spacing_ISO
     def get_target_spacing(self):
         """
         per default we use the 50th percentile=median for the target spacing. Higher spacing results in smaller data
@@ -71,13 +71,16 @@ class ExperimentPlanner3D_v21(ExperimentPlanner):
         # we don't use the last one for now
         #median_size_in_mm = target[target_size_mm] * RESAMPLING_SEPARATE_Z_ANISOTROPY_THRESHOLD < max(target_size_mm)
 
-        if has_aniso_spacing and has_aniso_voxels:
-            spacings_of_that_axis = np.vstack(spacings)[:, worst_spacing_axis]
-            target_spacing_of_that_axis = np.percentile(spacings_of_that_axis, 10)
-            # don't let the spacing of that axis get higher than the other axes
-            if target_spacing_of_that_axis < max(other_spacings):
-                target_spacing_of_that_axis = max(max(other_spacings), target_spacing_of_that_axis) + 1e-5
-            target[worst_spacing_axis] = target_spacing_of_that_axis
+        if self.spacing_ISO:
+            target = np.repeat(np.array(other_spacings).mean(),3)
+        else:
+            if has_aniso_spacing and has_aniso_voxels:
+                spacings_of_that_axis = np.vstack(spacings)[:, worst_spacing_axis]
+                target_spacing_of_that_axis = np.percentile(spacings_of_that_axis, 10)
+                # don't let the spacing of that axis get higher than the other axes
+                if target_spacing_of_that_axis < max(other_spacings):
+                    target_spacing_of_that_axis = max(max(other_spacings), target_spacing_of_that_axis) + 1e-5
+                target[worst_spacing_axis] = target_spacing_of_that_axis
         return target
 
     def get_properties_for_stage(self, current_spacing, original_spacing, original_shape, num_cases,

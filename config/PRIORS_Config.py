@@ -84,8 +84,8 @@ class PRIORSConfig():
             self.loss_function=FocalLossBin(alpha=self.class_weights[0]).to(self.opt.device)
         elif self.opt.loss_option=='FocalLoss':
             self.loss_function = FocalLoss(include_background=True,  # only two classes and keep the same weight as before 
-                                        to_onehot_y=False, 
-                                         gamma=2.0, 
+                                        to_onehot_y=not(self.opt.sigmoid), 
+                                         gamma=1.0, 
                                          weight=torch.tensor(self.class_weights),
                                          reduction="sum").to(self.opt.device)
         elif self.opt.loss_option=='DiceFocalLoss':
@@ -142,7 +142,7 @@ class PRIORSConfig():
                 [Activations(sigmoid=True), AsDiscrete(threshold=0.5)]
             )
         elif not self.opt.sigmoid and self.opt.output_nc>1:
-            self.post_trans = Compose([Activations(softmax=True), AsDiscrete(argmax=True)]) 
+            self.post_trans = Compose([Activations(softmax=True), AsDiscrete(argmax=True,to_onehot=self.opt.output_nc)]) 
 
         #metrics
         self.dice_metricTrain = DiceMetric(include_background=True, reduction="mean")

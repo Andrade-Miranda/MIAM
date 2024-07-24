@@ -17,6 +17,7 @@ from monai.networks.nets.vit import ViT
 from monai.utils import ensure_tuple_rep
 from torch.nn import init
 from util.util import print_network
+from util.block import Upsampling_DeepSupervision
 from .encoder import BasicUnetEnc
 from .decoder import CNN_VIT_decoder
 
@@ -128,7 +129,15 @@ class CNNHeavy_VITNaive(nn.Module):
                    )
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0], out_channels=out_channels)
         """ ------------------------------------------------------------- """      
-        
+
+        """ -------------------deep supervision ------------------------------- """        
+        if self.opt.DeepSupervision:
+            self.deepSupervision=Upsampling_DeepSupervision(
+                spatial_dims=opt.spatial_dims,
+                features=list(filters_Encoder[:-1]),
+                out_channels=opt.output_nc,
+                size=self.opt.imageSize
+                )
         
         """ -------------------CNN reshape when last layer doesnt match------------------------------- """        
         if self.patch_size[0] > 1: 
@@ -155,15 +164,18 @@ class CNNHeavy_VITNaive(nn.Module):
         return x
     
 
-    def forward(self, x_in):
+    def forward(self, x_in,DeppSuper):
         
         encModal=self.encodModalities(x_in)
         
-        outViT, hidden_states_out = self.vit(encModal[-1])
+        outViT, _ = self.vit(encModal[-1])
         outViT = self.proj_feat(outViT, self.hidden_size, self.feat_size)
         output=self.decoder(outViT,encModal)
         
-        return self.out(output[-1])
+        if DeppSuper:
+            return self.deepSupervision(output)
+        else:
+            return self.out(output[-1])
         
     
 
@@ -206,6 +218,7 @@ class CNNHeavy_VITNaive(nn.Module):
         print('initialize network with %s' % init_type)
         net.apply(init_func)  # apply the initialization function <init_func>
         
+
     def init_net(self,model, init_type='normal', init_gain=0.02):
         """Initialize a network: 1. register CPU/GPU device (with multi-GPU support); 2. initialize the network weights
         Parameters:
@@ -226,11 +239,17 @@ class CNNHeavy_VITNaive(nn.Module):
         print_network(model)
         print('#model created')
         """---------------------"""
-        self.init_weights(model, init_type, init_gain=init_gain)
+        if self.opt.pretrained:
+            if isinstance(self.opt.pretrained, str):
+                model.load_state_dict(torch.load(self.opt.pretrained,map_location=self.opt.device),strict=False)
+                print('initialize network with pretained weights %s' % self.opt.pretrained)
+            else:
+                raise TypeError('pretrained must be a str or None')
+        else:
+            model=self.init_weights(model, init_type, init_gain=init_gain)
+        
         return model
     """--------------------------------------------------------------------""" 
-
-
 
 
 

@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import pandas as pd
 
+import sys
+sys.path.insert(1,os.path.abspath(Path(os.getcwd())))# load MIAM as 1 path to search on
 
 from picai_eval import evaluate_folder
 from report_guided_annotation import extract_lesion_candidates
@@ -18,8 +20,8 @@ parser.add_argument("-i", "--input", type=str, required=True,
                     help="Path to folder with model predicitons (detection maps)")
 parser.add_argument("-l", "--labels", type=str, required=True,
                     help="Path to folder with labels (defaults to input folder if unspecified)")
-parser.add_argument("-l", "--labels", type=str, required=True,
-                    help="Path to folder with labels (defaults to input folder if unspecified)")
+parser.add_argument("-p", "--postpro_dir", type=str, required=True,
+                    help="Path to postprocessing folder with mask")
 parser.add_argument("-o", "--output", type=str, default="metrics.json",
                     help="Path to store metrics file, relative to the input folder.")
 parser.add_argument("-s", "--subject_list", type=str, required=False,
@@ -40,12 +42,7 @@ args = parser.parse_args()
 if args.labels is None:
     args.labels = args.input
 args.output = os.path.join(args.input, args.output)
-if args.subject_list is not None:
-    args.subject_list = os.path.join(args.input, args.subject_list)
-    with open(args.subject_list) as fp:
-        args.subject_list = json.load(fp)
-    if isinstance(args.subject_list, dict):
-        args.subject_list = args.subject_list['subject_list']
+
 
 if args.y_det_postprocess_func is not None:
     if args.y_det_postprocess_func == "extract_lesion_candidates":
@@ -70,11 +67,11 @@ assert os.path.exists(os.path.dirname(args.output)), f"Output folder does not ex
 
 if isinstance(args.subject_list, (str, Path)):
     with open(args.subject_list) as fp:
-        subject_list = json.load(fp)["data"]
+        subject_list = json.load(fp)["data"] #[0] for picai
 
 # calculate metrics
 clasif_metrics = evaluate_folder(y_det_dir=Path(args.input),
-                          y_true_dir=Path(args.label),
+                          y_true_dir=Path(args.labels),
                           subject_list=subject_list,
                           bootstrap = True,
                           y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred,threshold=0.5)[0],#lambda pred: extract_lesion_candidates(pred,threshold="dynamic")[0],
@@ -108,7 +105,7 @@ clasif_metrics.save_fullBootstrap(Path(args.output) / "metrics_bootstrap.json")
 
 #calibration segmentation
 calibration_values=Evaluate_Segcalibration_Folder(
-                                gdth_path=args.label,
+                                gdth_path=args.labels,
                                 pred_path=args.input,
                                 mask_path=args.postpro_dir,
                                 outputpath=args.output)
