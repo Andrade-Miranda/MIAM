@@ -28,13 +28,15 @@ class ExperimentPlanner3D_v21(ExperimentPlanner):
     We also increase the base_num_features to 32. This is solely because mixed precision training with 3D convs and
     amp is A LOT faster if the number of filters is divisible by 8
     """
-    def __init__(self, folder_with_cropped_data, preprocessed_output_folder,spacing_ISO=True):
+    def __init__(self, folder_with_cropped_data, preprocessed_output_folder,spacing_ISO=False,ISO_space_Value=None):
         super(ExperimentPlanner3D_v21, self).__init__(folder_with_cropped_data, preprocessed_output_folder)
         self.data_identifier = "nnUNetData_plans_v2.1"
         self.plans_fname = join(self.preprocessed_output_folder,
                                 "nnUNetPlansv2.1_plans_3D.pkl")
         self.unet_base_num_features = 32
         self.spacing_ISO=spacing_ISO
+        self.ISO_space_Value=ISO_space_Value
+        
     def get_target_spacing(self):
         """
         per default we use the 50th percentile=median for the target spacing. Higher spacing results in smaller data
@@ -72,7 +74,10 @@ class ExperimentPlanner3D_v21(ExperimentPlanner):
         #median_size_in_mm = target[target_size_mm] * RESAMPLING_SEPARATE_Z_ANISOTROPY_THRESHOLD < max(target_size_mm)
 
         if self.spacing_ISO:
-            target = np.repeat(np.array(other_spacings).mean(),3)
+            if self.ISO_space_Value:
+                target = np.repeat(np.array(self.ISO_space_Value),3)
+            else:
+                target = np.repeat(np.array(other_spacings).mean(),3)
         else:
             if has_aniso_spacing and has_aniso_voxels:
                 spacings_of_that_axis = np.vstack(spacings)[:, worst_spacing_axis]

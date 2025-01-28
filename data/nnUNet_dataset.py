@@ -42,7 +42,6 @@ from batchgenerators.transforms.utility_transforms import RemoveLabelTransform, 
 
 from batchgenerators.augmentations.utils import rotate_coords_3d, rotate_coords_2d
 
-
 from nnUNet.nnunet.training.data_augmentation.custom_transforms import Convert3DTo2DTransform, Convert2DTo3DTransform, \
     MaskTransform, ConvertSegmentationToRegionsTransform
 from nnUNet.nnunet.training.data_augmentation.pyramid_augmentations import MoveSegAsOneHotToData, \
@@ -51,6 +50,7 @@ from nnUNet.nnunet.training.data_augmentation.pyramid_augmentations import MoveS
 
 from nnUNet.nnunet.training.dataloading.dataset_loading import DataLoader3D, load_dataset
 from util.dataset_Testloading import DataLoaderTest3D
+from torch import distributed as dist
 
 import pickle
 
@@ -143,7 +143,7 @@ class nnUNetDataset(BaseDataset):
         else:
             self.seeds_train, self.seeds_val= None, None 
            
-        self.n_splits=self.opt.n_splits# seteado parra solo 5 splits por el momento
+        self.n_splits=self.opt.n_splits# only 5 splits are allowed
         self.random_state=self.opt.seed
         self.fold=opt.fold
 
@@ -160,6 +160,8 @@ class nnUNetDataset(BaseDataset):
             self.regions=None
         else:
             self.regions={ str(i): list(opt.region)[i] for i in range(len(opt.region))}
+
+        self.set_batch_size_and_oversample()
         
         
         
@@ -299,14 +301,14 @@ class nnUNetDataset(BaseDataset):
         return batchgenerator_train, batchgenerator_val,batchgenerator_test
 
 
-    def do_split(self,dataset,fold):
+    def do_split(self,dataset):
         """
         This is a suggestion for if your dataset is a dictionary (my personal standard)
         :return:
             """
         dataset_directory=os.path.join('./splits_plk',self.opt.dataroot,self.opt.dataset_mode)
         splits_file = os.path.join(dataset_directory, self.opt.loadsplit)
-        if not os.path.isfile(splits_file): # si no hay un split final creado
+        if not os.path.isfile(splits_file): # if not exists create new split
             splits = []
             all_keys_sorted = np.sort(list(dataset.keys()))
             print("Creating new split...")
@@ -352,8 +354,52 @@ class nnUNetDataset(BaseDataset):
         for i in val_keys:
             dataset_val[i] = dataset[i]
 
-
         return dataset_tr,dataset_val
+
+
+    def set_batch_size_and_oversample(self):
+        if not self.opt.distributed:
+        # set batch size to what the plan says, leave oversample untouched
+            self.batchSize = self.opt.batchSize
+        else:
+            # batch size is distributed over DDP workers and we need to change oversample_percent for each worker
+            world_size = dist.get_world_size()
+            my_rank = dist.get_rank()
+
+            global_batch_size = self.opt.batchSize
+            assert global_batch_size >= world_size, 'Cannot run DDP if the batch size is smaller than the number of ' \
+                                                'GPUs... Duh.'
+
+            batch_size_per_GPU = [global_batch_size // world_size] * world_size
+            batch_size_per_GPU = [batch_size_per_GPU[i] + 1
+                                if (batch_size_per_GPU[i] * world_size + i) < global_batch_size
+                                else batch_size_per_GPU[i]
+                                for i in range(len(batch_size_per_GPU))]
+            assert sum(batch_size_per_GPU) == global_batch_size
+
+            sample_id_low = 0 if my_rank == 0 else np.sum(batch_size_per_GPU[:my_rank])
+            sample_id_high = np.sum(batch_size_per_GPU[:my_rank + 1])
+
+            # This is how oversampling is determined in DataLoader
+            # round(self.batch_size * (1 - self.oversample_foreground_percent))
+            # We need to use the same scheme here because an oversample of 0.33 with a batch size of 2 will be rounded
+            # to an oversample of 0.5 (1 sample random, one oversampled). This may get lost if we just numerically
+            # compute oversample
+            oversample = [True if not i < round(global_batch_size * (1 - self.oversample_foreground_percent)) else False
+                        for i in range(global_batch_size)]
+
+            if sample_id_high / global_batch_size < (1 - self.oversample_foreground_percent):
+                oversample_percent = 0.0
+            elif sample_id_low / global_batch_size > (1 - self.oversample_foreground_percent):
+                oversample_percent = 1.0
+            else:
+                oversample_percent = sum(oversample[sample_id_low:sample_id_high]) / batch_size_per_GPU[my_rank]
+
+            print("worker", my_rank, "oversample", oversample_percent)
+            print("worker", my_rank, "batch_size", batch_size_per_GPU[my_rank])
+
+            self.batchSize = batch_size_per_GPU[my_rank]
+            self.oversample_foreground_percent = oversample_percent
 
 
     def LoadData(self):  
@@ -372,10 +418,10 @@ class nnUNetDataset(BaseDataset):
                                           self.default_3D_augmentation_params['rotation_z'],
                                           self.default_3D_augmentation_params['scale_range'])
 
-        self.dataset_tr,self.dataset_val=self.do_split(dataset,self.fold)
+        self.dataset_tr,self.dataset_val=self.do_split(dataset)
+
         
-        
-        dtran = DataLoader3D(self.dataset_tr, basic_patch_size, np.array(self.opt.imageSize).astype(int), self.opt.batchSize,
+        dtran = DataLoader3D(self.dataset_tr, basic_patch_size, np.array(self.opt.imageSize).astype(int), self.batchSize,
                              False, oversample_foreground_percent=self.oversample_foreground_percent,
                              pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
         

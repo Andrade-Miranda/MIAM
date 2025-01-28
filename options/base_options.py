@@ -4,8 +4,9 @@ from util import util
 import torch
 from util.visualizer import VisualPlots
 from util.nnUNetUtils import nnUNETPlanning
-from torch.utils.tensorboard import SummaryWriter
+#from torch.utils.tensorboard import SummaryWriter
 from util.loggings import WandbLogger,get_rank
+from util.distributed import init_distributed_mode,set_global_seed
 import numpy as np
 import wandb
 import sys
@@ -103,31 +104,48 @@ class BaseOptions():
         else:
             self.opt.isTrain = False
         #############################
-        
-        #### device CPU or CUDA############
-        if str(self.opt.gpu_ids) =='-1':
-            self.opt.device=torch.device("cpu") 
-            os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-        else:
-            self.opt.device=torch.device("cuda")
-            torch.backends.cudnn.benchmark = True
-        ########################
 
-        ##############CPU specifications###""""""""
-        # os.sched_getaffinity(0) is not supported by all operating systems
+        ###### Distributed mode ##########
+        # Initialize distributed mode
+        init_distributed_mode(self.opt)
+
+        # Set global seed
+        self.opt.seed = self.opt.seed + (self.opt.local_rank if self.opt.distributed else 0)
+        if self.opt.Deterministic:
+            set_global_seed(self.opt.seed)
+
+        # Device setup
+        if self.opt.distributed:
+            self.opt.device = torch.device('cuda', self.opt.local_rank)
+        else:
+            self.opt.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        ####################################    
+        
+
+        ############## CPU specifications ##############
         try:
-            self.opt.num_threads = np.min([len(os.sched_getaffinity(0)), self.opt.max_num_threads])
-        except:
-            self.opt.num_threads= self.opt.max_num_threads
-        print(f" Total number of Threads: {self.opt.num_threads}",flush=True)
+            # Check if os.sched_getaffinity is supported and get the number of available cores
+            if hasattr(os, 'sched_getaffinity'):
+                available_threads = len(os.sched_getaffinity(0))
+            else:
+                raise AttributeError("os.sched_getaffinity is not supported on this system.")
+            # Set the number of threads to the minimum of available threads or the user-defined maximum
+            self.opt.num_threads = np.min([available_threads, self.opt.max_num_threads])
+        except (AttributeError, NotImplementedError):
+            # Fallback for systems where os.sched_getaffinity is not available
+            self.opt.num_threads = min(os.cpu_count() or 1, self.opt.max_num_threads)
+
+        print(f"Total number of Threads: {self.opt.num_threads}", flush=True)
         ###################"#######################
         
+        ###### GPU specifications ########## to be deprecated in future version
         str_ids = str(self.opt.gpu_ids).split(',') #ensure that is string
         self.opt.gpu_ids = []
         for str_id in str_ids:
             id = int(str_id)
             if id >= 0:
                 self.opt.gpu_ids.append(id)
+        ####################################
 
         ######" validate None varaible"########""
         if self.opt.pretrained=='None':
@@ -215,11 +233,11 @@ class BaseOptions():
             OmegaConf.save(config=confOutput, f=fp)
         #####################################################################
 
-
         root_dir=self.opt.expr_dir
         max_epochs = self.opt.epochs
         val_interval = self.opt.val_interval
         Plots=VisualPlots(self.opt) #I will use to save some segmentation results. At the moment is only for plot loss curve
+
         
         # check this part and made code multi-gpu
         global_rank = get_rank()

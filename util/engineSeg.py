@@ -21,7 +21,7 @@ import time
 import os 
 import wandb
 from scipy.ndimage import gaussian_filter
-from report_guided_annotation import extract_lesion_candidates
+from report_guided_annotation import extract_lesion_candidates # only for picai
 #from util.analysis_utils import calculate_dsc
 from util.eval import evaluate
 import json

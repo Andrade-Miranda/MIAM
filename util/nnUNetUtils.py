@@ -5,6 +5,7 @@ Created on Thu Jun  9 23:48:10 2022
 
 @author: gustavo
 """
+import numpy as np
 from batchgenerators.utilities.file_and_folder_operations import *
 
 class nnUNETPlanning():

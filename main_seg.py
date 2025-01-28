@@ -14,12 +14,6 @@ from monai.utils import set_determinism
 ############# Load Options####################################################
 opt,root_dir,max_epochs,val_interval,Plots=TrainOptions().parse()
 
-#util.loggings.init_distributed_mode(opt)
-if opt.Deterministic:
-    seed=opt.seed#+ util.loggings.get_rank()
-    set_determinism(seed)
-    np.random.seed(seed)
-    random.seed(seed)
 
 """ --------load Data --------------- """ 
 data_loader = CreateDataLoader(opt)

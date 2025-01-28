@@ -107,8 +107,8 @@ class TrainOptions(BaseOptions):
     
         
     # distributed training parameters
-        self.parser.add_argument('--world_size', default=1, type=int,help='number of distributed processes')
-        self.parser.add_argument('--local_rank', default=-1, type=int)
+        self.parser.add_argument('--world_size', default=2, type=int,help='number of distributed processes. If you are training with 4 GPUs on 2 nodes, the world_size would be 8 (4 GPUs per node x 2 nodes)')
+        self.parser.add_argument('--local_rank', default=0, type=int)
         self.parser.add_argument('--dist_on_itp', action='store_true',dest='dist_on_itp', default=False)
         self.parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
         self.parser.add_argument('--distributed', action='store_true', default=False, help='Enabling distributed training')
