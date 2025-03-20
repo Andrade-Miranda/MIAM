@@ -61,7 +61,6 @@ except ImportError as ie:
     NonDetMultiThreadedAugmenter = None
 
 
-
 class nnUNetDataset(BaseDataset):
     
     def initialize(self, opt):
@@ -121,7 +120,7 @@ class nnUNetDataset(BaseDataset):
         "additive_brightness_sigma": 0.1,
         #opt.num_threads
         "num_threads": opt.num_threads if 'nnUNet_n_proc_DA' not in os.environ else int(os.environ['nnUNet_n_proc_DA']),
-        "num_cached_per_thread": 1,
+        "num_cached_per_thread": 3,
         }
 
         default_2D_augmentation_params = deepcopy(self.default_3D_augmentation_params)
@@ -293,8 +292,8 @@ class nnUNetDataset(BaseDataset):
             seeds=self.seeds_val[:int(max(params.get('num_threads') // 2, 1))]
         else:
             seeds=self.seeds_val
-        batchgenerator_val = MultiThreadedAugmenter(dataloader_val, val_transforms, max(params.get('num_threads') // 2, 1),
-                                                   params.get("num_cached_per_thread"), seeds=seeds,
+        batchgenerator_val = MultiThreadedAugmenter(dataloader_val, val_transforms, params.get('num_threads'),
+                                                   params.get("num_cached_per_thread"), seeds=self.seeds_val,
                                                     pin_memory=pin_memory)
 
         

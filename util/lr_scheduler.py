@@ -190,7 +190,6 @@ class fix_lr(_LRScheduler):
 
     def step(self,epoch):
         self.last_epoch=epoch
-        """Polynomial learning rate schedule"""
         return self.opt.lr 
     
     #def state_dict(self):

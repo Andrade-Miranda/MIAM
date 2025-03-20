@@ -1,14 +1,10 @@
-import os
 import torch
-import numpy as np
-import random
 from options.train_options import TrainOptions
 from data.data_loader import CreateDataLoader
 from config.train_setup import TrainSetup
 from models.models import create_model
 from util.engineSeg import optimize_model,validate_model,test_Predict_Rank
 
-from monai.utils import set_determinism
 
 
 ############# Load Options####################################################

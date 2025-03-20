@@ -44,6 +44,9 @@ class nnUNetPlain(nn.Module):
         nonlin_kwargs= {'negative_slope': 1e-2, 'inplace': True}
         deep_supervision= False
         nonlin_first= False
+        """
+        nonlin_first: if True you get conv -> nonlin -> norm. Else it's conv -> norm -> nonlin
+        """
         
         self.opt=opt
         

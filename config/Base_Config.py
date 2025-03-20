@@ -72,33 +72,3 @@ class BaseConfig():
 
 
 
-class TransfuseDiceCELoss(_Loss):
-
-    def __init__(self):
-        super(TransfuseDiceCELoss, self).__init__()
-        self.loss_function = DiceCELoss(smooth_nr=0, smooth_dr=1e-5, squared_pred=True, to_onehot_y=False, sigmoid=True)
-        
-    def forward(self, input, target):
-        """
-        Args:
-            input: the shape should be BNH[WD].
-            target: the shape should be BNH[WD] or B1H[WD].
-
-        Raises:
-            ValueError: When number of dimensions for input and target are different.
-            ValueError: When number of channels for target is neither 1 nor the same as input.
-
-        """
-        if len(input[0].shape) != len(target.shape):
-            raise ValueError("the number of dimensions for input and target should be the same.")
-        
-        
-        # ---- loss function ----
-        loss4 = self.loss_function(input[0],target)
-        loss3 = self.loss_function(input[1],target)
-        loss2 = self.loss_function(input[2],target)
-
-        total_loss = 0.5 * loss2 + 0.3 * loss3 + 0.2 * loss4
-
-
-        return total_loss

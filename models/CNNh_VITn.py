@@ -8,6 +8,7 @@ Created on Wed Sep 29 14:28:54 2021
 
 
 import math
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -17,68 +18,72 @@ from monai.networks.nets.vit import ViT
 from monai.utils import ensure_tuple_rep
 from torch.nn import init
 from util.util import print_network
-from util.block import Upsampling_DeepSupervision
-from .encoder import BasicUnetEnc
-from .decoder import CNN_VIT_decoder
+from models.dynamic_network_architectures.building_blocks.plain_conv_encoder import PlainConvEncoder
+from models.dynamic_network_architectures.building_blocks.unet_decoder import UNetDecoder
+from models.dynamic_network_architectures.building_blocks.helper import convert_conv_op_to_dim
 
   
 class CNNHeavy_VITNaive(nn.Module):
 
     def __init__(self, opt):
         
-        in_channels=opt.input_nc
-        out_channels= opt.output_nc
-        img_size=opt.imageSize
+        input_channels=opt.input_nc
+        n_stages=len(opt.filters_Encoder)
+        features_per_stage=opt.filters_Encoder
+        conv_op=nn.Conv3d
+        kernel_sizes=opt.conv_kernel_sizes
+        strides=opt.pool_op_kernel_sizes
+        n_conv_per_stage= tuple(np.repeat(2,len(opt.filters_Encoder)))
+        num_classes=opt.output_nc
+        n_conv_per_stage_decoder= tuple(np.repeat(2,len(opt.filters_Encoder[1:])))
+        conv_bias= False
+        norm_op=  nn.InstanceNorm3d if opt.norm_name == 'instance' else nn.BatchNorm3d
+        norm_op_kwargs= {'eps': 1e-5, 'affine': True}
+        dropout_op = nn.Dropout3d
+        dropout_op_kwargs = {'p': 0, 'inplace': True}
+        nonlin= nn.LeakyReLU
+        nonlin_kwargs= {'negative_slope': 1e-2, 'inplace': True}
+        deep_supervision= opt.DeepSupervision
+        nonlin_first= False
+        """
+        nonlin_first: if True you get conv -> nonlin -> norm. Else it's conv -> norm -> nonlin
+        """
+        #transformer
         feature_size=opt.patchSize
         hidden_size=opt.hidden_size
         mlp_dim= opt.mlp_dim
         num_heads=opt.num_heads
         num_layers=opt.num_layers
         pos_embed=opt.pos_embed
-        norm_name=opt.norm_name
-        filters_Encoder=opt.filters_Encoder[:-1]
-        res_block=opt.res_block
         dropout_rate= opt.dropout_rate
         spatial_dims= opt.spatial_dims
-        kernel_sizes=opt.conv_kernel_sizes[:-1]
-        stride=opt.pool_op_kernel_sizes[:-1]
+        
         self.opt=opt
-        """
-        Args:
-            in_channels: dimension of input channels (Modalities).
-            out_channels: dimension of output channels.
-            img_size: dimension of input image.
-            feature_size: dimension of network feature size.
-            hidden_size: dimension of hidden layer.
-            mlp_dim: dimension of feedforward layer.
-            num_heads: number of attention heads.
-            pos_embed: position embedding layer type.
-            norm_name: feature normalization type and arguments.
-            conv_block: bool argument to determine if convolutional block is used.
-            res_block: bool argument to determine if residual block is used.
-            dropout_rate: faction of the input units to drop.
-            spatial_dims: number of spatial dims.
-        """
+
         super(CNNHeavy_VITNaive,self).__init__()
         
         
         if not (0 <= dropout_rate <= 1):
             raise ValueError("dropout_rate should be between 0 and 1.")
         
+        ######nnUnet ecoder###################################
+        if isinstance(n_conv_per_stage, int):
+            n_conv_per_stage = [n_conv_per_stage] * n_stages
+        if isinstance(n_conv_per_stage_decoder, int):
+            n_conv_per_stage_decoder = [n_conv_per_stage_decoder] * (n_stages - 1)
+        assert len(n_conv_per_stage) == n_stages, "n_conv_per_stage must have as many entries as we have " \
+                                                  f"resolution stages. here: {n_stages}. " \
+                                                  f"n_conv_per_stage: {n_conv_per_stage}"
+        assert len(n_conv_per_stage_decoder) == (n_stages - 1), "n_conv_per_stage_decoder must have one less entries " \
+                                                                f"as we have resolution stages. here: {n_stages} " \
+                                                                f"stages, so it should have {n_stages - 1} entries. " \
+                                                                f"n_conv_per_stage_decoder: {n_conv_per_stage_decoder}"
+        self.encoder = PlainConvEncoder(input_channels, n_stages, features_per_stage, conv_op, kernel_sizes, strides,
+                                        n_conv_per_stage, conv_bias, norm_op, norm_op_kwargs, dropout_op,
+                                        dropout_op_kwargs, nonlin, nonlin_kwargs, return_skips=True,
+                                        nonlin_first=nonlin_first)
         
-        """ -------multipath encoders------------------------------------- """
-        
-        self.encodModalities = BasicUnetEnc(
-            spatial_dims= spatial_dims,
-            in_channels= in_channels,
-            features= filters_Encoder,
-            norm_name=norm_name,
-            res_block=res_block,
-            kernel_sizes=kernel_sizes,
-            stride=stride,
-            )
-        """ ----------------------------------------------------------------"""      
-              
+
         """ -------------------VIT encoders------------------------------- """
         a,b,c=0,0,0
         for i,j,k in self.opt.pool_op_kernel_sizes[:-1]:
@@ -101,7 +106,7 @@ class CNNHeavy_VITNaive(nn.Module):
         self.classification = False
 
         self.vit = ViT(
-            in_channels=filters_Encoder[-1],
+            in_channels=features_per_stage[-1],
             img_size=img_size,
             patch_size=self.patch_size,
             hidden_size=hidden_size,
@@ -113,32 +118,12 @@ class CNNHeavy_VITNaive(nn.Module):
             dropout_rate=dropout_rate,
             spatial_dims=spatial_dims,
         )
-        """ ------------------------------------------------------------- """  
-        from copy import deepcopy
-        filters_EncVit=list(deepcopy(filters_Encoder))[:-1]
-        filters_EncVit.append(hidden_size)
-             
-        self.decoder=CNN_VIT_decoder(
-                   spatial_dims=spatial_dims,
-                   num_modality=1,
-                   features=tuple(filters_EncVit),
-                   norm_name=norm_name,
-                   res_block=res_block, 
-                   kernel_sizes=kernel_sizes,
-                   stride=stride,           
-                   )
-        self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=filters_Encoder[0], out_channels=out_channels)
         """ ------------------------------------------------------------- """      
 
-        """ -------------------deep supervision ------------------------------- """        
-        if self.opt.DeepSupervision:
-            self.deepSupervision=Upsampling_DeepSupervision(
-                spatial_dims=opt.spatial_dims,
-                features=list(filters_Encoder[:-1]),
-                out_channels=opt.output_nc,
-                size=self.opt.imageSize
-                )
-        
+        ######nnUnet decoder###################################
+        self.decoder = UNetDecoder(self.encoder, num_classes, n_conv_per_stage_decoder, deep_supervision,
+                                   nonlin_first=nonlin_first) 
+              
         """ -------------------CNN reshape when last layer doesnt match------------------------------- """        
         if self.patch_size[0] > 1: 
             self.reshapeConv=get_conv_layer(
@@ -151,11 +136,7 @@ class CNNHeavy_VITNaive(nn.Module):
                 is_transposed=True,
                 )
         """ -------------------------------------------------- """             
-        
-        self.numModal=in_channels #gloabal variable to keep the number of modalities
-        self.numConvLevel=len(filters_Encoder)
 
-        
     def proj_feat(self, x, hidden_size, feat_size):
         new_view = (x.size(0), *feat_size, hidden_size)
         x = x.view(new_view)
@@ -164,7 +145,7 @@ class CNNHeavy_VITNaive(nn.Module):
         return x
     
 
-    def forward(self, x_in,DeppSuper):
+    def forward(self,x_in,DeppSuper):
         
         encModal=self.encodModalities(x_in)
         
@@ -184,7 +165,7 @@ class CNNHeavy_VITNaive(nn.Module):
 
 
         """--------------------Initialize network weights.---------------"""   
-    def init_weights(self,net, init_type='xavier', init_gain=0.02):
+    def init_weights(self,net, init_type='normal', init_gain=0.02):
         """Initialize network weights.
 
         Parameters:
@@ -211,14 +192,14 @@ class CNNHeavy_VITNaive(nn.Module):
                     raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
             if hasattr(m, 'bias') and m.bias is not None:
                 init.constant_(m.bias.data, 0.0)
-            elif classname.find('BatchNorm2d') != -1:  # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
+            if classname.find('BatchNorm2d') != -1:  # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
                 init.normal_(m.weight.data, 1.0, init_gain)
                 init.constant_(m.bias.data, 0.0)
 
         print('initialize network with %s' % init_type)
         net.apply(init_func)  # apply the initialization function <init_func>
+        return net
         
-
     def init_net(self,model, init_type='normal', init_gain=0.02):
         """Initialize a network: 1. register CPU/GPU device (with multi-GPU support); 2. initialize the network weights
         Parameters:
@@ -229,17 +210,7 @@ class CNNHeavy_VITNaive(nn.Module):
 
         Return an initialized network.
         """
-        if not self.opt.gpu_ids:
-            model = model.to(self.opt.device)
-        elif self.opt.gpu_ids[0]>1:
-            assert(torch.cuda.is_available())
-            model = torch.nn.DataParallel(model, list(range(self.opt.gpu_ids[0]))).to(self.opt.device)  # multi-GPUs
-        else:
-            model = model.to(self.opt.device)
-        print_network(model)
-        print('#model created')
-        """---------------------"""
-        if self.opt.pretrained:
+        if self.opt.pretrained: # to check the keys in the dictionary
             if isinstance(self.opt.pretrained, str):
                 model.load_state_dict(torch.load(self.opt.pretrained,map_location=self.opt.device),strict=False)
                 print('initialize network with pretained weights %s' % self.opt.pretrained)
@@ -248,8 +219,48 @@ class CNNHeavy_VITNaive(nn.Module):
         else:
             model=self.init_weights(model, init_type, init_gain=init_gain)
         
+        model=self.wrap_model(model)
+        """---------------------"""
+        print_network(model)
+        print('#model created')
+        """---------------------"""
         return model
+
     """--------------------------------------------------------------------""" 
+
+    def wrap_model(self,model):
+        """
+        1. Distribute model or not
+        2. Rewriting batch size and workers
+        """
+        args = self.opt
+        assert model is not None, "Please build model before wrapping model"
+        
+        if args.distributed:
+            ngpus_per_node = args.ngpus_per_node
+            # Apply SyncBN
+            model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
+            if args.gpu is not None:
+                torch.cuda.set_device(args.gpu)
+                model.cuda(args.gpu)
+                # When using a single GPU per process and per
+                # DistributedDataParallel, we need to divide the batch size
+                # ourselves based on the total number of GPUs we have
+                self.batch_size = args.batch_size // ngpus_per_node
+                self.workers = (args.workers + ngpus_per_node - 1) // ngpus_per_node
+                print("=> Finish adapting batch size and workers according to gpu number")
+                model = nn.parallel.DistributedDataParallel(model, 
+                                                            device_ids=[args.gpu],
+                                                            find_unused_parameters=True)
+            else:
+                model.cuda()
+                # DistributedDataParallel will divide and allocate batch_size to all
+                # available GPUs if device_ids are not set
+                model = nn.parallel.DistributedDataParallel(model, find_unused_parameters=True)
+        else :
+            model = model.to(self.opt.device)
+        
+        return model   
 
 
 

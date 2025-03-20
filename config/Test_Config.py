@@ -13,7 +13,7 @@ from util.postprocessing import Picai_Postprocessing
 from monai.transforms import (
         Activations,
         AsDiscrete,
-        Compose,AsChannelFirst)
+        )
 
 class TestConfig():
     
@@ -33,7 +33,7 @@ class TestConfig():
         #if self.opt.dataset_mode=='MeanEnsemb' or self.opt.dataset_mode=='MCdropOut':# tengo que usar sigmoid si el output channel es 1 o el usuario especifica sigmoid (Brats dataset - Picai)
         if self.opt.sigmoid or self.opt.output_nc==1:
             self.post_trans = Activations(sigmoid=True)
-            self.postLast=AsDiscrete(threshold=0.5)
+            self.postLast=AsDiscrete(threshold=0.3)
         else:
             self.post_trans = Activations(softmax=True)
             self.postLast=AsDiscrete(argmax=True)                
@@ -60,7 +60,7 @@ class TestConfig():
                 mode='gaussian'
                 )
         if self.opt.VAL_AMP:
-            with torch.cuda.amp.autocast():
+            with torch.autocast(device_type=self.opt.device):
                 return _compute(input,DeppSuper=False)
         else:
             return _compute(input,DeppSuper=False)

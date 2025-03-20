@@ -7,13 +7,14 @@ plan: nnUNetPlansv2.1_plans_3D.pkl # check to modify more plaining preprocessing
 Deterministic: True
 loadsplit: splits_final.json #splits_final.json    #otrosplit.json use default value
 pretrained: None
-name: ${TrainConfig}_default
-DeepSupervision: False
+name: ${TrainConfig}
+labels_name: ['background', 'tumor'] # check to modify
+
 
 # model setting
 encoder: UNETR # MCNN_h+VIT_n #UNETR #UNETR_MAE
 imageSize: [96,96,96]
-region: [None] # for brats
+region: [None] # for brats change
 patchSize: 16 #16
 feature_size: 16
 num_layers: 12
@@ -21,11 +22,10 @@ mlp_dim: 3072
 num_heads: 12
 hidden_size: 768
 norm_name: instance
-drop_path_rate: 0.1
 
 
 #trainer
-num_training_steps_per_epoch: 10 #num de step training
+num_training_steps_per_epoch: 20 #num de step training
 num_validation_steps_per_epoch: 5 #num de step validation
 validate_min_epoch: 1
 gpu_ids: 0
@@ -34,12 +34,14 @@ input_nc: 3
 output_nc: 1 # number of object to segment one class vs multi-lass
 epochs: 5 # number of epochs
 amsgrad: True
-loss_option: DiceFocalLoss #DiceCELoss # check to validate other loss
+loss_option: DiceCELoss #DiceFocalLoss #DiceCELoss # check to validate other loss
 lr: 1e-3
 sigmoid: True # to check since I am not sure 
+DeepSupervision: True
+attention: True
 batchSize: 1
 Val_batchSize: 1
-VAL_AMP: False
+VAL_AMP: True
 debug: False
 
 
@@ -55,12 +57,13 @@ opt_betas: [0.9,0.95]
 
 
 # wandb
-project: LocalTrials
-enable_wandb: False
-nameRun: ${name}_trial1
+project: Segmentation_Trials
+enable_wandb: True
+nameRun: ${dataroot}_${name}_M${encoder}_DS${DeepSupervision}_L${loss_option}_I${imageSize}_e${epochs}_Bs${batchSize}_lr${lr}_F${fold}
+entity: xamus86
 
 # Postprocessing setting
 postprocessing: Picai_Postprocessing # improve the function
-postpro_dir: /home/gustavo/Code/Git_workspace/MIAM/nnUNet/data/nnUnet_raw/nnUNet_raw_data/Task2210_OTLowRegime/labels-WG-Tr #
+postpro_dir: /home/gandrade-miranda/Documents/Code/Git_workspace/MIAM/nnUNet/data/nnUnet_raw/nnUNet_raw_data/Task2210_OTLowRegime/labels-WG-Tr #
 Conn_comp: False
 

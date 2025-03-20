@@ -6,18 +6,19 @@ import matplotlib.pyplot as plt
 import torch
 import math
 from monai.visualize import blend_images, matshow3d
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from sklearn.metrics import PrecisionRecallDisplay, RocCurveDisplay,auc 
 from matplotlib.gridspec import GridSpec
 import matplotlib.lines as lines
 from help_fnct.calibration.uncertainty_helpers import UncertaintyOps
-#matplotlib.use('Agg')
 from matplotlib.ticker import FixedFormatter
 
 
 from sklearn.calibration import calibration_curve, CalibrationDisplay
 import wandb
-#os.environ["WANDB_MODE"]="offline"
+
 
 class VisualPlots():
     def __init__(self, opt):
@@ -48,7 +49,7 @@ class VisualPlots():
         plt.savefig(os.path.join(self.opt.out_dir,'PartialResults_'+str(slices)+'_'+str(epoch)+'.pdf'))
 
     def segment_thumbnails(self,image,label,frame_dim,savepath,FigName):
-        ret = blend_images(image, label, alpha=0.5, cmap="hsv", rescale_arrays=False)
+        ret = blend_images(image, label, alpha=0.5, cmap="hsv", rescale_arrays=True)
         fig=matshow3d(
                 volume=ret,
                 fig=None,
@@ -183,7 +184,6 @@ class VisualPlots():
         plt.plot(x, y, color="red",label='train')
         plt.plot(x, z, color="blue",label='val')
         plt.yticks(np.arange(0, 1, step=0.1))  # Set label locations.
-        plt.show()
         #plt.savefig(os.path.join(self.opt.out_dir,str(best_metric_epoch)+'_'+str(best_metric)+'_LossVsDice.pdf'))
         plt.savefig(os.path.join(self.opt.out_dir,'LossVsDice.pdf'))
         

@@ -3,18 +3,12 @@ from data.base_data_loader import BaseDataLoader
 
 def CreateDataset(opt):
     dataset = None
-    if opt.dataset_mode == 'Brats2021': #debe trabajar con json and monai, debe adaptarse para que trabaje en conjunto con NNUNET
-        from data.Brats2021_dataset import Brats2021Dataset # dataloader para brats
-        dataset = Brats2021Dataset()
-    elif opt.dataset_mode == 'nnUNet': #dataloader based on nnUNet
+    if opt.dataset_mode == 'nnUNet': #dataloader based on nnUNet
         from data.nnUNet_dataset import nnUNetDataset
         dataset = nnUNetDataset()
     elif opt.dataset_mode == 'nnUNetWPriors': #dataloader based on nnUNet for include priors
         from data.nnUNetWPriors_dataset import nnUNetWPriorsDataset
         dataset = nnUNetWPriorsDataset()
-    elif opt.dataset_mode == 'nnUNetAmos': #dataloader for nnUNet AMOS
-        from data.nnUNetAmos_dataset import nnUNetAmosDataset
-        dataset = nnUNetAmosDataset()
     elif opt.dataset_mode == 'nnUNetExtchan': #dataloader extra channel input
         from data.nnUNetExtchan_dataset import nnUNetExtchanDataset
         dataset = nnUNetExtchanDataset()

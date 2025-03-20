@@ -17,9 +17,7 @@ from pathlib import Path
 
 import torch
 import torch.distributed as dist
-#from torch._six import inf
-
-#from tensorboardX import SummaryWriter
+import wandb
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -190,11 +188,7 @@ class MetricLogger(object):
             self.writer.add_scalar(head + "/" + k, v, self.step if step is None else step)
 
     def flush(self):
-        self.writer.flush() """
-
-        
-        
-
+        self.writer.flush() """  
 
 class WandbLogger(object):
     def __init__(self, args):
@@ -208,13 +202,15 @@ class WandbLogger(object):
                 "To use the Weights and Biases Logger please install wandb."
                 "Run `pip install wandb` to install it."
             )
-
-        # Initialize a W&B run 
-        if self._wandb.run is None:
-            self._wandb.init(
-                project=args.project,
-                config=args
-            )
+        self.loadLogger(args)
+    
+    def loadLogger(self,args):
+        wandb_logger=wandb.init(project=args.project,
+                    entity=args.entity,
+                    config=args,
+                    name=args.nameRun,
+                    dir=args.dir_wandb)
+        return wandb_logger
 
 
     def log_epoch_metrics(self, metrics, commit=True):

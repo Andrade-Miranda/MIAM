@@ -5,7 +5,7 @@ import torch
 from util.visualizer import VisualPlots
 from util.nnUNetUtils import nnUNETPlanning
 #from torch.utils.tensorboard import SummaryWriter
-from util.loggings import WandbLogger,get_rank
+from util.loggings import get_rank
 from util.distributed import init_distributed_mode,set_global_seed
 import numpy as np
 import wandb
@@ -50,6 +50,7 @@ class BaseOptions():
         self.parser.add_argument('--yh_run_model', type=str, default='Train',choices=('Train','Continue'), help='chooses which Train or continue')#no used yet by the moment test and training has different scripts
         self.parser.add_argument('--dataset_mode', type=str, default='nnUNet', help='choose the dataset mode to load the data, by default BRATS')
         self.parser.add_argument('--output_dir', type=str, default=None, help='save test segmentatio output results here, default is None meaning that files will save in ./Output/TaskName')
+        self.parser.add_argument('--labels_name', type=str, default=None, help='a list with the correspondance of the labels and its name')  
         self.parser.add_argument('--.', type=int, default=0, help='custom_sub_dir')
 
         # models segmentation
@@ -119,6 +120,9 @@ class BaseOptions():
             self.opt.device = torch.device('cuda', self.opt.local_rank)
         else:
             self.opt.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        ####check data paralislism DDP
+        ngpus_per_node = torch.cuda.device_count()
+        self.opt.ngpus_per_node = ngpus_per_node
         ####################################    
         
 
@@ -205,6 +209,8 @@ class BaseOptions():
         ###
         self.opt.expr_dir=expr_dir
         self.opt.out_dir=out_dir
+        self.opt.dir_wandb=out_dir
+
 
         ########## convert namespace to dictionary#########################
         self.args = vars(self.opt)
@@ -243,12 +249,13 @@ class BaseOptions():
         global_rank = get_rank()
 
         if global_rank == 0 and self.opt.enable_wandb:
-            dir_wandb=os.makedirs(os.path.join('wandb'), exist_ok=True)
+            wandb.finish()
+            os.environ["WANDB_DISABLE_SERVICE"] = "true"
             self.opt.wandb_logger = wandb.init(project=self.opt.project,
-                                               entity="xamus86",
-                                               config=self.opt,
-                                               name=self.opt.nameRun,
-                                               dir=dir_wandb)
+                                    entity=self.opt.entity,
+                                    config=self.opt,
+                                    name=self.opt.nameRun,
+                                    dir=self.opt.dir_wandb)
         else:
             self.opt.wandb_logger = None
         

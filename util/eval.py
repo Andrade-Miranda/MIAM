@@ -25,6 +25,9 @@ import numpy as np
 from scipy import ndimage
 from scipy.optimize import linear_sum_assignment
 from tqdm import tqdm
+import shutil
+import tempfile
+import warnings
 
 try:
     import numpy.typing as npt
@@ -36,6 +39,8 @@ from picai_eval.analysis_utils import (calculate_dsc, calculate_iou,
 from picai_eval.image_utils import (read_label, read_prediction,
                                     resize_image_with_crop_or_pad)
 from picai_eval.metrics import Metrics
+from help_fnct.UncertainSmallEmpty.evaluator import evaluate_folders
+
 
 PathLike = Union[str, Path]
 
@@ -497,3 +502,44 @@ def evaluate_folder(
 
     # perform evaluation with compiled file lists
     return evaluate(y_det=y_det, y_true=y_true, subject_list=subject_list, verbose=verbose, **kwargs)
+
+
+
+
+def UseEvaluator_function(original_dir: str, files_to_copy: List[str],labels, predicted_dir:str):
+    """
+    Copy a list of files to a temporary directory.
+
+    Parameters:
+    - files_to_copy: list of file paths to copy.
+
+    Returns:
+    - UseEvaluator
+    """
+
+    # Create a temporary directory
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"Temporary directory created at: {temp_dir}")
+
+        # Copy each file to the temporary directory
+        for file_path in files_to_copy:
+            if os.path.isfile(os.path.join(original_dir,file_path)):
+                shutil.copy(os.path.join(original_dir,file_path), temp_dir)
+                print(f"Copied {file_path} to {temp_dir}")
+            else:
+                print(f"File {file_path} does not exist.")
+
+        with warnings.catch_warnings(): #binary segmentation warning to compute ROC
+            warnings.simplefilter("ignore")
+            UseEvaluator=evaluate_folders(
+            folder_with_gts=temp_dir,
+            folder_with_predictions=predicted_dir,
+            th=0.01,
+            labels=tuple(labels),
+            name='Use_evaluator')
+        
+    # At this point, the temporary directory and its contents have been deleted
+    print("Temporary directory and its contents have been deleted.")
+    return  UseEvaluator
+
+    

@@ -70,7 +70,7 @@ class nnUNetConfig():
             return _compute(input)
 
     def name(self):
-        return "BaseConfig"
+        return "nnUNetConfig"
 
 
 

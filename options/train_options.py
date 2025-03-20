@@ -21,7 +21,8 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--mlp_dim', type=int, default=3072, help='dimension of the transformer multilayer perceptron')
         self.parser.add_argument('--num_heads', type=int, default=12, help='number of head of each transformer block')
         self.parser.add_argument('--num_layers', type=int, default=12, help='number of encoder in the transformer block')
-        self.parser.add_argument('--pos_embed', type=str, default="conv", help='positional embedding strategy')    
+        self.parser.add_argument('--pos_embed_type', type=str, default="learnable", help='positional embedding strategy')  
+        self.parser.add_argument('--proj_type', type=str, default="conv", help='patch embedding layer type. Defaults to "conv"')   
         self.parser.add_argument('--norm_name', type=str, default="instance", help='normalization strategy')
         self.parser.add_argument('--pretrained', type=str, default=None, help='no use pretrained models')   
         self.parser.add_argument('--pretrained2d', dest='pretrained2d',action='store_true', default=False, help='When 2d pretraining are available')  
@@ -109,6 +110,7 @@ class TrainOptions(BaseOptions):
     # distributed training parameters
         self.parser.add_argument('--world_size', default=2, type=int,help='number of distributed processes. If you are training with 4 GPUs on 2 nodes, the world_size would be 8 (4 GPUs per node x 2 nodes)')
         self.parser.add_argument('--local_rank', default=0, type=int)
+        self.parser.add_argument('--ngpus_per_node',default=1, type=int)
         self.parser.add_argument('--dist_on_itp', action='store_true',dest='dist_on_itp', default=False)
         self.parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
         self.parser.add_argument('--distributed', action='store_true', default=False, help='Enabling distributed training')
@@ -129,13 +131,18 @@ class TrainOptions(BaseOptions):
                        help="Save model checkpoints as W&B Artifacts.")
         self.parser.add_argument('--nameRun', default='UNETR', type=str,
                     help="The name of the new run.")
+        self.parser.add_argument('--entity', default='xamus', type=str,
+                    help="The name of the new run.")
+        self.parser.add_argument('--dir_wandb', default='wandb', type=str,
+                    help="The name of the new run.")
 
 ####################OPTION FOR LOSS function###################################""""
         self.parser.add_argument('--DeepSupervision', action='store_true', default=False)
-        self.parser.add_argument('--attention', action='store_true', default=False)
+        self.parser.add_argument('--attention', action='store_true', default=False,help='attention for the deep supervision')
         self.parser.add_argument('--loss_option', type=str, default="DiceFocalLoss", help='choose loss function')        
         self.parser.add_argument('--lambda_Loss', type=float, nargs='+', default=[1,1], help='lambda for compose loss, vector represented the weight of the loss')
-        self.parser.add_argument('--class_weights', type=float, nargs='+', default=[0.2,0.8], help='lambda for compose loss, vector represented the weight of the loss')
+        self.parser.add_argument('--class_weights', type=float, nargs='+', default=[0.2,0.8], help='lambda for compose loss, vector represented the weight of the loss, use for multiclass in focal loss')
+        self.parser.add_argument('--weights_supervision', type=float, nargs='+', default=[], help='weights for the deep supervision loss')
 
 
 ####################OPTION AVAILABLE only with config contrastive###################################""""        

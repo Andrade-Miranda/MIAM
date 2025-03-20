@@ -49,7 +49,7 @@ class DefaultConfig():
         #######################################################################""#######################################################################""
 
         # Allow Amp to perform casts as required by the opt_level
-        self.loss_scaler = torch.cuda.amp.GradScaler()#NativeScaler() # if args.use_amp is False, this won't be used
+        self.loss_scaler = torch.GradScaler()#NativeScaler() # if args.use_amp is False, this won't be used
 
         
         ##################LOSS CONFIGURATION##############################################""
@@ -88,8 +88,8 @@ class DefaultConfig():
             self.loss_function = DiceCELoss(smooth_nr=0, smooth_dr=1e-5, squared_pred=False, to_onehot_y=not(self.opt.sigmoid), sigmoid=self.opt.sigmoid, softmax=not(self.opt.sigmoid))
 
         if self.opt.DeepSupervision:
-            self.loss_function = Supervision_loss_Seg(criterion=self.loss_function)
-
+            self.loss_function = Supervision_loss_Seg(criterion=self.loss_function,weights=self.opt.weights_supervision,
+                                                      attention=self.opt.attention)
        
     ##################Schedule CONFIGURATION##############################################""
         if self.opt.sched is not None:
@@ -121,17 +121,21 @@ class DefaultConfig():
 
 
         ###will depend of task
-        if self.opt.sigmoid and self.opt.output_nc==1:
+        if self.opt.sigmoid:
+            self.post_trans = Compose(
+                [Activations(sigmoid=True), AsDiscrete(threshold=0.3)]
+            )
+        elif not self.opt.sigmoid and self.opt.output_nc==1:
             self.post_trans = Compose(
                 [Activations(sigmoid=True), AsDiscrete(threshold=0.3)]
             )
         elif not self.opt.sigmoid and self.opt.output_nc>1:
             self.post_trans = Compose([Activations(softmax=True), AsDiscrete(argmax=True,to_onehot=self.opt.output_nc)]) 
 
-        #metrics
-        self.dice_metricTrain = DiceMetric(include_background=True, reduction="mean")
-        self.dice_metricVal = DiceMetric(include_background=True, reduction="mean")
-        self.dice_metricTest = DiceMetric(include_background=True, reduction="mean")
+        #metrics - some task will need to be modified
+        self.dice_metricTrain = DiceMetric(include_background=self.opt.output_nc==1, reduction="mean")
+        self.dice_metricVal = DiceMetric(include_background=self.opt.output_nc==1, reduction="mean")
+        self.dice_metricTest = DiceMetric(include_background=self.opt.output_nc==1, reduction="mean")
 
         print('#Config Training scheme created')
         
@@ -210,13 +214,13 @@ class DefaultConfig():
             return sliding_window_inference(
                     inputs=input,
                     roi_size=self.opt.imageSize,
-                    sw_batch_size=1,#self.opt.Val_batchSize,
+                    sw_batch_size=self.opt.Val_batchSize,
                     predictor=self.model,
                     overlap=0.5                    
                     )
                 
         if self.opt.VAL_AMP:
-            with torch.cuda.amp.autocast():
+            with torch.autocast():
                 return _compute(input)
         else:
             return _compute(input)

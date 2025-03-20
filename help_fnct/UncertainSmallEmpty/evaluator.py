@@ -917,7 +917,7 @@ def evaluate_folders(
         test_ref_pair,
         threshold=threshold,
         json_output_file=join(folder_with_predictions, f"summary_{name}.json"),
-        excel_output_file=join(folder_with_predictions, f"summary_{name}.xlsx"),
+        #excel_output_file=join(folder_with_predictions, f"summary_{name}.xlsx"),
         num_threads=8,
         labels=labels,
         **metric_kwargs,

@@ -46,7 +46,7 @@ import wandb
 #os.environ["WANDB_MODE"]="offline"
 
 from picai_eval import evaluate_folder
-from report_guided_annotation import extract_lesion_candidates
+from help_fnct.eval_fcnt import extract_lesion_candidates
 
 
 import SimpleITK as sitk

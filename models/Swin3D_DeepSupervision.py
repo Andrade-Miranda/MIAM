@@ -64,9 +64,9 @@ class Swin3D_DeepSupervision(nn.Module):
         num_heads= (3, 6, 12, 24)
         feature_size= 24
         norm_name= "instance"
-        drop_rate = 0.0
-        attn_drop_rate= 0.0
-        dropout_path_rate = 0.0
+        drop_rate = opt.dropout_rate
+        attn_drop_rate= opt.attn_drop_rate
+        dropout_path_rate = opt.dropout_path_rate
         normalize = True
         use_checkpoint = False
         spatial_dims=opt.spatial_dims
@@ -412,12 +412,13 @@ class Swin3D_DeepSupervision(nn.Module):
                     raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
             if hasattr(m, 'bias') and m.bias is not None:
                 init.constant_(m.bias.data, 0.0)
-            elif classname.find('BatchNorm2d') != -1:  # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
+            if classname.find('BatchNorm2d') != -1:  # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
                 init.normal_(m.weight.data, 1.0, init_gain)
                 init.constant_(m.bias.data, 0.0)
 
         print('initialize network with %s' % init_type)
-        net.apply(init_func)  # apply the initialization function <init_func>
+        net.apply(init_func)
+        return net  # apply the initialization function <init_func>
         
     def init_net(self,model, init_type='normal', init_gain=0.02):
         """Initialize a network: 1. register CPU/GPU device (with multi-GPU support); 2. initialize the network weights
@@ -429,17 +430,7 @@ class Swin3D_DeepSupervision(nn.Module):
 
         Return an initialized network.
         """
-        if not self.opt.gpu_ids:
-            model = model.to(self.opt.device)
-        elif self.opt.gpu_ids[0]>1:
-            assert(torch.cuda.is_available())
-            model = torch.nn.DataParallel(model, list(range(self.opt.gpu_ids[0]))).to(self.opt.device)  # multi-GPUs
-        else:
-            model = model.to(self.opt.device)
-        print_network(model)
-        print('#model created')
-        """---------------------"""
-        if self.opt.pretrained:
+        if self.opt.pretrained: # to check the keys in the dictionary
             if isinstance(self.opt.pretrained, str):
                 model.load_state_dict(torch.load(self.opt.pretrained,map_location=self.opt.device),strict=False)
                 print('initialize network with pretained weights %s' % self.opt.pretrained)
@@ -448,9 +439,48 @@ class Swin3D_DeepSupervision(nn.Module):
         else:
             model=self.init_weights(model, init_type, init_gain=init_gain)
         
+        model=self.wrap_model(model)
+        """---------------------"""
+        print_network(model)
+        print('#model created')
+        """---------------------"""
         return model
     """--------------------------------------------------------------------""" 
-              
+
+    def wrap_model(self,model):
+        """
+        1. Distribute model or not
+        2. Rewriting batch size and workers
+        """
+        args = self.opt
+        assert model is not None, "Please build model before wrapping model"
+        
+        if args.distributed:
+            ngpus_per_node = args.ngpus_per_node
+            # Apply SyncBN
+            model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
+            if args.gpu is not None:
+                torch.cuda.set_device(args.gpu)
+                model.cuda(args.gpu)
+                # When using a single GPU per process and per
+                # DistributedDataParallel, we need to divide the batch size
+                # ourselves based on the total number of GPUs we have
+                self.batch_size = args.batch_size // ngpus_per_node
+                self.workers = (args.workers + ngpus_per_node - 1) // ngpus_per_node
+                print("=> Finish adapting batch size and workers according to gpu number")
+                model = nn.parallel.DistributedDataParallel(model, 
+                                                            device_ids=[args.gpu],
+                                                            find_unused_parameters=True)
+            else:
+                model.cuda()
+                # DistributedDataParallel will divide and allocate batch_size to all
+                # available GPUs if device_ids are not set
+                model = nn.parallel.DistributedDataParallel(model, find_unused_parameters=True)
+        else :
+            model = model.to(self.opt.device)
+        
+        return model
+
 
 def window_partition(x, window_size):
     """window partition operation based on: "Liu et al.,
