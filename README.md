@@ -5,18 +5,32 @@ segmentation. It contains hybrid CNN-Transformer architectures, transformer
 baselines, CNN baselines, nnU-Net-based preprocessing, and training and
 evaluation utilities used to study modality fusion in oncology imaging.
 
-This repository is associated with:
+This repository is associated with two publications:
 
 > Gustavo Andrade-Miranda et al. **Multi-modal medical Transformers: A
 > meta-analysis for medical image segmentation in oncology.** Computerized
 > Medical Imaging and Graphics, 110, 102308, 2023.
 > <https://doi.org/10.1016/j.compmedimag.2023.102308>
 
-The publication is a review and meta-analysis rather than the specification of
-one model. This repository is the related experimental framework. The current
-checkout does not contain every original experiment configuration, dataset,
-preprocessing plan, checkpoint, or expected result table, so it should not be
-described as a complete reproduction package for the published results.
+> Gustavo Andrade-Miranda, Pedro Soto Vega, Kamilia Taguelmimt, Hong-Phuong
+> Dang, Dimitris Visvikis, and Julien Bert. **Exploring transformer reliability
+> in clinically significant prostate cancer segmentation: A comprehensive
+> in-depth investigation.** Computerized Medical Imaging and Graphics, 118,
+> 102459, 2024. <https://doi.org/10.1016/j.compmedimag.2024.102459>
+
+The 2023 publication is a review and meta-analysis, with MIAM serving as its
+related multimodal experimental framework. The 2024 publication uses the
+framework for an in-depth reliability investigation of clinically significant
+prostate cancer segmentation. The current checkout does not contain every
+original dataset, preprocessing plan, checkpoint, or expected result table, so
+it should not be described as a complete numerical reproduction package.
+
+## Publication Map
+
+| Publication | Main repository components |
+| --- | --- |
+| 2023 multimodal transformer meta-analysis | `models/`, `main_seg.py`, `data/nnUNet_dataset.py`, and the shared training and nnU-Net preprocessing stack. |
+| 2024 prostate cancer reliability investigation | `main_picai.py`, `config/PICAI_Config.py`, `picai_eval/`, PI-CAI split helpers, and the shared models, calibration, uncertainty, and evaluation utilities. |
 
 ## Models
 
@@ -122,6 +136,17 @@ The standard workflow uses a held-out cross-validation fold for model selection
 and final fold prediction. In the current code, this is not an independent
 external test cohort.
 
+The prostate reliability workflow uses its dedicated entry point and
+configuration:
+
+```bash
+python main_picai.py args/UNETR_PICAI-Clas.yaml
+```
+
+Dataset locations, plans, splits, channels, and labels must be adapted to the
+licensed prostate MRI data available to the user. The checked-in YAML is a
+research configuration reference, not a self-contained downloadable dataset.
+
 ## Inference And Evaluation
 
 The custom-model inference entry point is:
@@ -178,7 +203,7 @@ working copies and are excluded from the public project. See
   maintained preprocessing and training stack.
 - Improve calibration, uncertainty estimation, and external-cohort validation.
 
-## Citation
+## Citations
 
 ```bibtex
 @article{andrade_miranda_2023_multimodal,
@@ -190,7 +215,17 @@ working copies and are excluded from the public project. See
   doi = {10.1016/j.compmedimag.2023.102308},
   author = {Andrade-Miranda, Gustavo and others}
 }
+
+@article{andrade_miranda_2024_reliability,
+  title = {Exploring transformer reliability in clinically significant prostate cancer segmentation: A comprehensive in-depth investigation},
+  journal = {Computerized Medical Imaging and Graphics},
+  volume = {118},
+  pages = {102459},
+  year = {2024},
+  doi = {10.1016/j.compmedimag.2024.102459},
+  author = {Andrade-Miranda, Gustavo and Soto Vega, Pedro and Taguelmimt, Kamilia and Dang, Hong-Phuong and Visvikis, Dimitris and Bert, Julien}
+}
 ```
 
-Use the publisher's citation record for the complete and authoritative author
-list and bibliographic metadata.
+Use the publishers' citation records as the authoritative bibliographic
+metadata.

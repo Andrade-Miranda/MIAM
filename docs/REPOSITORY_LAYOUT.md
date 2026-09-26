@@ -5,6 +5,7 @@
 | Path | Purpose |
 | --- | --- |
 | `main_seg.py` | Primary custom segmentation training entry point. |
+| `main_picai.py` | Prostate reliability study training entry point. |
 | `predict.py` | Custom-model fold and ensemble inference. |
 | `models/` | MIAM architectures, model factory, and shared network blocks. |
 | `data/` | nnU-Net-preprocessed dataset loaders and augmentations. |
@@ -18,6 +19,8 @@
 | `run_training_nnUnet.py` | Modified nnU-Net training CLI. |
 | `run_prediction_nnUNet.py` | Modified nnU-Net inference CLI. |
 | `MetricsReloaded/` | Vendored metric implementations. |
+| `picai_eval/` | Lesion-level prostate cancer evaluation utilities. |
+| `config/PICAI_Config.py` | Study-specific optimization and evaluation configuration. |
 
 ## Paper-Related Architecture Flow
 
@@ -27,6 +30,10 @@
 4. `models/models.py` constructs the requested architecture.
 5. `config/custom_TrainSetup.py` constructs optimization and inference tools.
 6. `util/engineSeg.py` trains, validates, checkpoints, predicts, and evaluates.
+
+The 2024 prostate reliability workflow replaces the generic entry point with
+`main_picai.py`, selects `PICAIConfig`, and uses prostate-specific splits and
+lesion evaluation while reusing the shared model and data infrastructure.
 
 ## Experimental Status
 

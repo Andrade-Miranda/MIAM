@@ -7,10 +7,19 @@ early channel fusion, modality-specific CNN encoders, modality-aware token
 embeddings, shared transformer fusion, and established CNN/transformer
 baselines.
 
+The repository also contains the prostate-specific workflow associated with
+the 2024 reliability investigation. It uses `main_picai.py`,
+`config/PICAI_Config.py`, the PI-CAI split helpers, `picai_eval/`, and shared
+calibration, uncertainty, model, and training components.
+
 The repository does not currently provide a bit-for-bit reproduction of the
 2023 publication. Exact paper configurations, original datasets, generated
 plans, all fold assignments, trained checkpoints, and expected numerical
 results are not available together in this checkout.
+
+The same limitation applies to exact numerical reproduction of the 2024 study:
+the licensed prostate MRI cohorts, generated preprocessing plans, all trained
+weights, and complete expected fold-level outputs are not distributed here.
 
 ## Recommended Workflow
 
@@ -27,6 +36,16 @@ results are not available together in this checkout.
 8. Repeat all folds and model variants required by the experiment design.
 9. Preserve the resolved `opt.yaml`, software environment, plan, split,
    checkpoints, and metric outputs for every run.
+
+For the prostate reliability workflow, use a matching PI-CAI configuration and
+run:
+
+```bash
+python main_picai.py args/UNETR_PICAI-Clas.yaml
+```
+
+Do not run the example unchanged until its dataset, plan, split, channel, and
+output settings have been reviewed for the local environment.
 
 ## Reproducibility Record
 
