@@ -87,7 +87,7 @@ class MultiCNNHeavy_VITmultiple(nn.Module):
         mlp_dim= opt.mlp_dim
         num_heads=opt.num_heads
         num_layers=opt.num_layers
-        pos_embed=opt.pos_embed
+        pos_embed=getattr(opt, "pos_embed", opt.proj_type)
         norm_name=opt.norm_name
         filters_Encoder=opt.filters_Encoder
         res_block=opt.res_block

@@ -109,7 +109,7 @@ class TransFuse_S(nn.Module):# use Resnet34+ViTsmall
         mlp_dim= opt.mlp_dim#1536
         num_heads=opt.num_heads#12
         num_layers=opt.num_layers#12
-        pos_embed=opt.pos_embed
+        pos_embed=getattr(opt, "pos_embed", opt.proj_type)
         #norm_name=opt.norm_name
         #res_block=opt.res_block
         drop_rate= opt.dropout_rate

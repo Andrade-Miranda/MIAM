@@ -1,3 +1,0 @@
-- uso 2 conv en decoder sin subir el numero de features en la primera conv y vuelvo al valor original
-- utilizo skip connections en el decoder (paper iansten)
-- uso Tiny Convnext 

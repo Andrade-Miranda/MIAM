@@ -1,0 +1,41 @@
+# Python caches and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environments, editors, and operating-system files
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store
+
+# Build and packaging artifacts
+*.egg-info/
+build/
+dist/
+
+# Training outputs, weights, and local datasets
+Output/
+checkpoints/
+pretrained_ckpt/
+options/CT/
+nnUNet/data/
+wandb/
+*.pth
+*.pt
+*.ckpt
+
+# Explicitly deprecated or unvalidated local code
+Zdeprecated/
+models/deprecated/
+models/ToCheck/
+util/deprecated/
+config/Tocheck/
+data/ToCheck/
+
+# Additional project-specific local experiments belong in .git/info/exclude.
