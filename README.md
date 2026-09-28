@@ -188,21 +188,6 @@ working copies and are excluded from the public project. See
 - [`docs/DEPRECATED.md`](docs/DEPRECATED.md): local-only file policy.
 - [`nnUNet/readme.md`](nnUNet/readme.md): upstream nnU-Net v1 documentation.
 
-## Future Work
-
-- Archive the exact paper configurations, data manifests, preprocessing plans,
-  random seeds, and expected fold-level results.
-- Add public pretrained weights where dataset and model licenses permit.
-- Expand automated unit, integration, CPU, and GPU tests with continuous
-  integration.
-- Improve robustness to missing modalities and investigate additional
-  modality-fusion strategies.
-- Replace remaining working-directory assumptions with an installable package
-  and explicit configuration paths.
-- Evaluate migration from the locally modified nnU-Net v1 implementation to a
-  maintained preprocessing and training stack.
-- Improve calibration, uncertainty estimation, and external-cohort validation.
-
 ## Citations
 
 ```bibtex
